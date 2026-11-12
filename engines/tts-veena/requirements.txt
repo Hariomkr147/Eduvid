@@ -1,0 +1,6 @@
+torch==2.5.1+cu124
+torchaudio==2.5.1+cu124
+transformers>=4.46,<5
+accelerate
+snac
+bitsandbytes

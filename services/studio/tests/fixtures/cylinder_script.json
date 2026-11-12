@@ -1,0 +1,83 @@
+{
+  "title": {"en": "Curved Surface Area of a Cylinder", "hi": "बेलन का वक्र पृष्ठीय क्षेत्रफल"},
+  "language": "hinglish",
+  "screen_lang": "en",
+  "sources": ["NCERT Class 9 Maths, Surface Areas and Volumes"],
+  "scenes": [
+    {"kind": "title",
+     "title": {"en": "Curved Surface Area of a Cylinder", "hi": "बेलन का वक्र पृष्ठीय क्षेत्रफल"},
+     "tag": {"en": "Class 9 · Maths · Surface Areas", "hi": "कक्षा 9 · गणित · पृष्ठीय क्षेत्रफल"},
+     "subtitle": {"en": "Why it is 2πrh", "hi": "यह 2πrh क्यों है"},
+     "objectives": [{"en": "See a cylinder unroll", "hi": "बेलन को खुलते देखें"}, {"en": "Find the formula", "hi": "सूत्र निकालें"}, {"en": "Solve one example", "hi": "एक उदाहरण हल करें"}],
+     "lines": [
+       {"say": "नमस्ते दोस्तों! आज हम सिलेंडर का कर्व्ड सरफेस एरिया समझेंगे।", "caps": "Namaste dosto! | Aaj hum *cylinder* ka | *curved surface area* samjhenge.", "en": "Hello friends! Today we will understand the curved surface area of a cylinder."}
+     ]},
+    {"kind": "figure",
+     "title": {"en": "Unroll the cylinder", "hi": "बेलन को खोलें"},
+     "shapes": [
+       {"type": "cylinder", "x": 40, "y": 72, "r": 22, "h": 50, "color": "ink", "line": 0, "word": ""},
+       {"type": "dim", "x": 66, "y": 72, "x2": 66, "y2": 22, "label": "h", "color": "primary", "line": 0, "word": "ऊंचाई"},
+       {"type": "segment", "x": 40, "y": 72, "x2": 62, "y2": 72, "label": "r", "color": "start", "line": 0, "word": "रेडियस"},
+       {"type": "arrow", "x": 76, "y": 47, "x2": 92, "y2": 47, "color": "muted", "line": 1, "word": "खोल"},
+       {"type": "rect", "x": 98, "y": 22, "w": 54, "h": 50, "color": "primary", "fill": true, "line": 1, "word": "रेक्टेंगल"},
+       {"type": "dim", "x": 98, "y": 76, "x2": 152, "y2": 76, "label": "2\\pi r", "color": "primary", "line": 2, "word": "लंबाई"}
+     ],
+     "lines": [
+       {"say": "इस सिलेंडर की ऊंचाई एच है और रेडियस आर है।", "caps": "Is *cylinder* ki *height* h hai | aur *radius* r hai.", "en": "This cylinder has height h and radius r."},
+       {"say": "अब इसकी सतह को काटकर खोल दो, तो एक रेक्टेंगल बन जाता है।", "caps": "Ab iski surface ko kaat ke khol do, | toh ek *rectangle* ban jaata hai.", "en": "Now cut its surface and open it up: it becomes a rectangle."},
+       {"say": "रेक्टेंगल की लंबाई बेस के सर्कल की परिधि, यानी टू पाई आर है।", "caps": "Rectangle ki *length* | base ke circle ki paridhi, yaani 2πr hai.", "en": "The rectangle's length is the circumference of the base circle, 2πr."}
+     ]},
+    {"kind": "board",
+     "title": {"en": "The formula", "hi": "सूत्र"},
+     "steps": [
+       {"tex": "\\text{Area} = \\text{length} \\times \\text{breadth}", "text": {"en": "area of the rectangle", "hi": "आयत का क्षेत्रफल"}, "line": 0, "word": ""},
+       {"tex": "= 2\\pi r \\times h", "text": {"en": "length 2πr, breadth h", "hi": "लंबाई 2πr, चौड़ाई h"}, "line": 1, "word": ""},
+       {"tex": "\\text{CSA} = 2\\pi r h", "key": true, "line": 2, "word": ""}
+     ],
+     "lines": [
+       {"say": "रेक्टेंगल का एरिया होता है लंबाई गुणा चौड़ाई।", "caps": "Rectangle ka *area* = length × breadth.", "en": "The area of a rectangle is length times breadth."},
+       {"say": "यहां लंबाई टू पाई आर है और चौड़ाई एच है।", "caps": "Yahan length 2πr hai | aur breadth h hai.", "en": "Here the length is 2πr and the breadth is h."},
+       {"say": "तो सिलेंडर का कर्व्ड सरफेस एरिया है टू पाई आर एच।", "caps": "Toh *curved surface area* = 2πrh.", "en": "So the curved surface area of a cylinder is 2πrh."}
+     ]},
+    {"kind": "example",
+     "title": {"en": "Example", "hi": "उदाहरण"},
+     "question": {"en": "A cylinder has radius 7 cm and height 10 cm. Find its curved surface area.", "hi": "एक बेलन की त्रिज्या 7 सेमी और ऊँचाई 10 सेमी है। इसका वक्र पृष्ठीय क्षेत्रफल ज्ञात कीजिए।"},
+     "steps": [
+       {"tex": "\\text{CSA} = 2\\pi r h", "line": 1, "word": ""},
+       {"tex": "= 2 \\times \\frac{22}{7} \\times 7 \\times 10", "line": 2, "word": ""},
+       {"tex": "= 440\\ \\text{cm}^2", "key": true, "line": 3, "word": ""}
+     ],
+     "answer": {"en": "440 cm²", "hi": "440 सेमी²"},
+     "answer_tex": "440\\ \\text{cm}^2",
+     "lines": [
+       {"say": "एक सिलेंडर की रेडियस सात सेंटीमीटर है और ऊंचाई दस सेंटीमीटर।", "caps": "Radius 7 cm, | height 10 cm.", "en": "A cylinder has radius 7 cm and height 10 cm."},
+       {"say": "फॉर्मूला लगाओ, टू पाई आर एच।", "caps": "Formula lagao: 2πrh.", "en": "Use the formula 2πrh."},
+       {"say": "टू गुणा बाईस बटा सात गुणा सात गुणा दस।", "caps": "2 × 22/7 × 7 × 10", "en": "Two times twenty-two by seven times seven times ten."},
+       {"say": "जवाब आता है चार सौ चालीस स्क्वेयर सेंटीमीटर।", "caps": "Answer: *440 cm²*", "en": "The answer is 440 square centimetres."}
+     ]},
+    {"kind": "check",
+     "title": {"en": "Your turn", "hi": "अब आपकी बारी"},
+     "question": {"en": "Radius 7 cm, height 5 cm. What is the curved surface area?", "hi": "त्रिज्या 7 सेमी, ऊँचाई 5 सेमी। वक्र पृष्ठीय क्षेत्रफल कितना है?"},
+     "options": [{"en": "110 cm²", "hi": "110 सेमी²"}, {"en": "220 cm²", "hi": "220 सेमी²"}, {"en": "154 cm²", "hi": "154 सेमी²"}, {"en": "440 cm²", "hi": "440 सेमी²"}],
+     "correct": 1,
+     "hint": {"en": "Use 2πrh with π = 22/7", "hi": "π = 22/7 लेकर 2πrh लगाओ"},
+     "explain": {"en": "2 × 22/7 × 7 × 5 = 220 cm²", "hi": "2 × 22/7 × 7 × 5 = 220 सेमी²"},
+     "pause_s": 6,
+     "lines": [
+       {"say": "अब आप बताओ, रेडियस सात और ऊंचाई पांच हो तो एरिया कितना? रुककर सोचो।", "caps": "Ab aap batao: radius 7, height 5. | *Area* kitna? Ruk ke socho.", "en": "Now you tell me: radius 7 and height 5, what is the area? Pause and think."},
+       {"say": "सही जवाब है दो सौ बीस स्क्वेयर सेंटीमीटर।", "caps": "Sahi jawab: *220 cm²*", "en": "The right answer is 220 square centimetres."}
+     ]},
+    {"kind": "summary",
+     "title": {"en": "What we learnt", "hi": "हमने क्या सीखा"},
+     "points": [
+       {"text": {"en": "A cylinder's curved surface unrolls into a rectangle", "hi": "बेलन की वक्र सतह खुलकर आयत बनती है"}, "line": 0, "word": ""},
+       {"text": {"en": "Its length is 2πr, its breadth is h", "hi": "उसकी लंबाई 2πr और चौड़ाई h है"}, "line": 0, "word": "लंबाई"},
+       {"text": {"en": "Curved surface area = 2πrh", "hi": "वक्र पृष्ठीय क्षेत्रफल = 2πrh"}, "line": 1, "word": ""}
+     ],
+     "next": {"en": "Next: total surface area!", "hi": "आगे: कुल पृष्ठीय क्षेत्रफल!"},
+     "lines": [
+       {"say": "तो याद रखो, सिलेंडर खोलने पर रेक्टेंगल बनता है, जिसकी लंबाई टू पाई आर है।", "caps": "Yaad rakho: cylinder kholo toh rectangle, | length 2πr.", "en": "Remember: open a cylinder and you get a rectangle of length 2πr."},
+       {"say": "और कर्व्ड सरफेस एरिया है टू पाई आर एच। शाबाश!", "caps": "Aur *CSA* = 2πrh. | Shabash!", "en": "And the curved surface area is 2πrh. Well done!"}
+     ]}
+  ]
+}

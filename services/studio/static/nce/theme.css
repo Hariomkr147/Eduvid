@@ -1,0 +1,27 @@
+/* Tokens from the golden HTMLs, with the indigo and border tints aligned to the Adhyay Frontend concept-explorer (#525EC0, #4650A8, #DEE0F1). Light only. Change colours here and nowhere else. */
+:root{
+  --bg:#FCFCFC; --surface:#FFFFFF; --surface-2:#F4F5F9; --line:#E6E7EE; --line-2:#DEE0F1; --press:#D6D4E3;
+  --grid:#EEEEF2;
+  --ink:#1B2033; --ink-2:#394058; --muted:#6B7189; --faint:#A0A5B8;
+  --brand:#5A4499; --brand-soft:#EFEBFA;
+  --primary:#2260E9; --primary-deep:#1846B3; --primary-soft:#EEF3FE; --on-primary:#FFFFFF;
+  --indigo:#525EC0; --indigo-deep:#4650A8;
+  --accent-ink:#17377B;
+  --chip:#E8EDFA; --chip-ink:#525EC0;
+  --start:#6A4FC4; --start-soft:#F0ECFB;
+  --step:#2260E9;
+  --frame:#DEE0F1; --paper:#F7F5F0;
+  --good:#23A160; --good-line:#9FDDBA; --good-bg:#E3FAEE; --good-ink:#11663B;
+  --bad:#CF4038; --bad-line:#EDB0AC; --bad-bg:#F8DFDE; --bad-ink:#93261F;
+  --note-bg:#FBF2E5; --note-line:#F0DCBF; --note-ink:#99520F;
+  --info-bg:#EEF2FD; --info-line:#CCD8F7; --info-ink:#1E3F99;
+  --flame:#F2701A; --flame-bg:#FFF1E6;
+  --bubble:#FFFFFF; --shadow:0 6px 20px rgba(23,30,60,.08);
+  --scrim:rgba(18,20,32,.4);
+  /* One bilingual system (fonts/fonts.css): Mukta reads, Baloo 2 speaks (headings, buttons, numbers). Both cover Latin and Devanagari,
+     so a number or an English word inside a Hindi line matches the line. Fallbacks: the Devanagari faces Windows and Android ship. */
+  --font-ui:"Mukta", "Nirmala UI", "Noto Sans Devanagari", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display:"Baloo 2", "Mukta", "Nirmala UI", "Noto Sans Devanagari", system-ui, sans-serif;
+  --font-hi:var(--font-ui);
+  --gold-bg:#FFF8E1; --gold-line:#F1D48A; --gold:#F5B700; --gold-deep:#F0A800; --gold-tag-bg:#FFF1CC; --gold-ink:#8A5A00;
+}

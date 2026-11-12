@@ -1,0 +1,30 @@
+[project]
+name = "eduvid-common"
+version = "0.1.0"
+requires-python = ">=3.11"
+# Core (audio, textmetrics, speakable.violations, tts_server) needs only the standard library + ffmpeg,
+# so GPU engine images install it without extras. Services that use settings/db/storage/jobs install [service].
+dependencies = []
+
+[project.optional-dependencies]
+service = [
+  "pydantic-settings==2.6.1",
+  "psycopg[binary]==3.2.3",
+  "psycopg-pool==3.2.4",
+  "boto3==1.35.76",
+]
+test = ["pytest==8.3.4", "ruff==0.8.3", "httpx==0.28.1"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["eduvid_common*"]
+
+[tool.pytest.ini_options]
+markers = ["gpu: needs a GPU / running engines", "db: needs the compose postgres"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"

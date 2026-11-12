@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EduVid Studio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='12' fill='%235A4499'/><text x='20' y='27' font-size='17' font-family='sans-serif' font-weight='800' fill='white' text-anchor='middle'>EV</text></svg>">
+<link rel="stylesheet" href="/studio/static/nce/fonts/fonts.css">
+<link rel="stylesheet" href="/studio/static/nce/theme.css">
+<link rel="stylesheet" href="/studio/static/studio.css">
+</head>
+<body>
+<div class="page rail" id="page">
+  <main class="main" id="main">
+    <div class="health" id="health" aria-live="polite"></div>
+
+    <!-- ===================== NEW VIDEO ===================== -->
+    <form id="newForm" autocomplete="off">
+      <section class="card" aria-labelledby="h1t">
+        <h2 id="h1t"><span class="n">1</span>Curriculum target</h2>
+        <div class="seg" role="radiogroup" aria-label="Source">
+          <label><input type="radio" name="source" value="ncert" checked>NCERT library<small>GyanSetu teaching units</small></label>
+          <label><input type="radio" name="source" value="text">Paste your own<small>notes, a worksheet, a topic</small></label>
+        </div>
+        <div id="srcNcert">
+          <div class="grid" style="margin-top:14px">
+            <div class="field"><label for="grade">Class</label><select id="grade"></select></div>
+            <div class="field"><label for="book">Book</label><select id="book" disabled></select></div>
+            <div class="field full"><label for="chapter">Chapter</label><select id="chapter" disabled></select></div>
+          </div>
+          <div id="units" class="units" aria-label="Teaching units"></div>
+          <div class="picked" id="picked" aria-live="polite"></div>
+          <p class="cap" id="unitsCap">Pick one or more teaching units. Each script is grounded only in the NCERT text of the units you pick.</p>
+        </div>
+        <div id="srcText" hidden>
+          <div class="grid" style="margin-top:14px">
+            <div class="field"><label for="ptitle">Topic</label><input type="text" id="ptitle" placeholder="e.g. Surface area of a cone"></div>
+            <div class="field"><label for="pgrade">Class</label><select id="pgrade"></select></div>
+            <div class="field full"><label for="ptext">Material</label><textarea id="ptext" placeholder="Paste the textbook section, your notes or the points to cover. Facts come only from here."></textarea></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h2t">
+        <h2 id="h2t"><span class="n">2</span>AI model <span class="grow"></span><span class="pill cost" id="costChip">—</span></h2>
+        <div class="field mpick" id="mp1">
+          <label for="mq1">Script model (OpenRouter)</label>
+          <input type="search" id="mq1" placeholder="Search 300+ models: opus, gpt, gemini, deepseek…" role="combobox" aria-expanded="false" aria-controls="ml1">
+          <div class="list" id="ml1" role="listbox" hidden></div>
+          <div class="chosen" id="mc1"></div>
+          <div class="quick" id="quick1" aria-label="Popular models"></div>
+        </div>
+        <p class="cap">Prices are live from OpenRouter ($ per million input / output tokens). The estimate assumes the length you pick below; the real cost shows while it builds.</p>
+        <label class="check" style="margin-top:14px"><input type="checkbox" id="cmpModel"><span>Compare with a second model<small>Writes two scripts from the same NCERT material, so you can watch them side by side.</small></span></label>
+        <div class="field mpick" id="mp2" hidden style="margin-top:10px">
+          <label for="mq2">Second model</label>
+          <input type="search" id="mq2" placeholder="Search models" role="combobox" aria-expanded="false" aria-controls="ml2">
+          <div class="list" id="ml2" role="listbox" hidden></div>
+          <div class="chosen" id="mc2"></div>
+        </div>
+        <div class="grid" style="margin-top:14px">
+          <div class="field"><label for="temp">Creativity: <span id="tempV">0.4</span></label><input type="range" id="temp" min="0.1" max="0.9" step="0.1" value="0.4"><div class="ends"><span>Focused</span><span>Creative</span></div></div>
+          <div class="field"><label for="cap">Spending cap per video ($, 0 = none)</label><input type="number" id="cap" min="0" step="0.5" value="5"></div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h3t">
+        <h2 id="h3t"><span class="n">3</span>Video style</h2>
+        <div class="label">Visuals</div>
+        <div class="seg" role="radiogroup" aria-label="Visual mode">
+          <label><input type="radio" name="mode" value="template" checked>Design templates<small>NCE look, reliable</small></label>
+          <label><input type="radio" name="mode" value="llm">LLM animation<small>the model draws each scene</small></label>
+          <label><input type="radio" name="mode" value="both">Both<small>compare side by side</small></label>
+        </div>
+        <div class="field mpick" id="mp3" hidden style="margin-top:12px">
+          <label for="mq3">Animation model <span class="cap">(optional: defaults to the script model)</span></label>
+          <input type="search" id="mq3" placeholder="Search models" role="combobox" aria-expanded="false" aria-controls="ml3">
+          <div class="list" id="ml3" role="listbox" hidden></div>
+          <div class="chosen" id="mc3"></div>
+        </div>
+        <div class="grid" style="margin-top:14px">
+          <div class="field"><div class="label">Shape</div>
+            <div class="seg" role="radiogroup" aria-label="Aspect ratio">
+              <label><input type="radio" name="aspect" value="16:9" checked>16:9<small>laptop, projector</small></label>
+              <label><input type="radio" name="aspect" value="9:16">9:16<small>phone, Shorts</small></label>
+            </div></div>
+          <div class="field"><label for="minutes">Length: <span id="minV">3</span> min</label><input type="range" id="minutes" min="1" max="12" step="0.5" value="3"><div class="ends"><span>1 min</span><span>12 min</span></div></div>
+          <div class="field full"><div class="label">Scenes to use</div>
+            <div class="chipset" id="kinds">
+              <label><input type="checkbox" value="title" checked>Title</label>
+              <label><input type="checkbox" value="concept" checked>Concept</label>
+              <label><input type="checkbox" value="board" checked>Board (maths)</label>
+              <label><input type="checkbox" value="figure" checked>Figure</label>
+              <label><input type="checkbox" value="example" checked>Worked example</label>
+              <label><input type="checkbox" value="check" checked>Pause-and-try</label>
+              <label><input type="checkbox" value="summary" checked>Summary</label>
+            </div></div>
+          <div class="field"><div class="label" id="checksL">Pause-and-try questions</div>
+            <div class="stepper" role="group" aria-labelledby="checksL"><button type="button" data-d="-1" aria-label="Fewer">−</button><output id="checks">2</output><button type="button" data-d="1" aria-label="More">+</button></div></div>
+          <div class="field"><div class="label">Render quality</div>
+            <div class="seg" role="radiogroup" aria-label="Quality">
+              <label><input type="radio" name="quality" value="draft" checked>Draft<small>fast, GPU encode</small></label>
+              <label><input type="radio" name="quality" value="final">Final<small>sharper, slower</small></label>
+            </div></div>
+        </div>
+        <div class="checks" style="margin-top:14px">
+          <label class="check"><input type="checkbox" id="bk" checked><span>Bal Krishna guide<small>welcomes, hints and cheers</small></span></label>
+          <label class="check"><input type="checkbox" id="grid" checked><span>Graph-paper background</span></label>
+          <label class="check"><input type="checkbox" id="burn"><span>Burn captions into the MP4<small>the player shows captions anyway</small></span></label>
+          <label class="check"><input type="checkbox" id="sfx" checked><span>Soft sound effects<small>pops on reveals, a ding on answers</small></span></label>
+          <label class="check"><input type="checkbox" id="chrome"><span>Progress bar inside the video<small>for MP4s shared outside the player</small></span></label>
+        </div>
+        <div class="field" style="margin-top:14px"><label for="instr">Extra instructions for the model <span class="cap">(optional)</span></label>
+          <textarea id="instr" style="min-height:70px" placeholder="e.g. Use cricket examples. Spend more time on slant height. Keep it playful."></textarea></div>
+      </section>
+
+      <section class="card" aria-labelledby="h4t">
+        <h2 id="h4t"><span class="n">4</span>Voice and language</h2>
+        <div class="label">Narration</div>
+        <div class="seg" role="radiogroup" aria-label="Language">
+          <label><input type="radio" name="lang" value="hinglish" checked>Hinglish<small>Hindi + English terms</small></label>
+          <label><input type="radio" name="lang" value="hindi"><span lang="hi">हिन्दी</span><small>Hindi</small></label>
+          <label><input type="radio" name="lang" value="english">English<small>Indian classroom</small></label>
+        </div>
+        <div class="grid" style="margin-top:14px">
+          <div class="field"><div class="label">On-screen text</div>
+            <div class="seg" role="radiogroup" aria-label="On-screen text">
+              <label><input type="radio" name="screen" value="en" checked>English</label>
+              <label><input type="radio" name="screen" value="hi"><span lang="hi">हिन्दी</span></label>
+            </div></div>
+          <div class="field"><label for="voice">Voice</label>
+            <div style="display:flex;gap:8px"><select id="voice"></select><button class="btn small" type="button" id="prev" aria-label="Play a sample of this voice">▶</button></div>
+            <p class="cap" id="voiceCap">IndicF5 scored best in the Hindi voice test (lowest error rate).</p></div>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button class="btn primary" id="go" type="submit">Write the script</button>
+        <span class="cap" id="goCap">You review and edit the script before anything is recorded or rendered.</span>
+      </div>
+      <div class="err" id="newErr" hidden></div>
+    </form>
+
+    <!-- ===================== ONE VIDEO (review / build / done) ===================== -->
+    <div id="video" hidden></div>
+  </main>
+
+  <aside id="rail">
+    <section class="card rail-card" aria-labelledby="rt">
+      <h2 id="rt">Your video</h2>
+      <dl class="facts" id="facts"></dl>
+      <div style="margin-top:16px"><div class="cap" id="costLbl">Estimated AI cost</div><div class="big-cost" id="railCost">—</div><div class="cap" id="railInr"></div></div>
+      <button class="btn primary block" type="submit" form="newForm" id="go2" style="margin-top:16px">Write the script</button>
+      <div class="bk-row"><img src="/studio/static/nce/assets/bk-calm.png" alt=""><div class="bubble" id="bkTip" role="status">Pick a chapter and I'll help you make a video!</div></div>
+    </section>
+  </aside>
+</div>
+<script type="module" src="/studio/static/builder.js"></script>
+</body>
+</html>

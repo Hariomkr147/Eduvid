@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lesson video</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='12' fill='%235A4499'/><path d='M15 12l14 8-14 8z' fill='white'/></svg>">
+<link rel="stylesheet" href="/studio/static/nce/fonts/fonts.css">
+<link rel="stylesheet" href="/studio/static/nce/theme.css">
+<link rel="stylesheet" href="/studio/static/nce/app.css">
+<link rel="stylesheet" href="/studio/static/player.css">
+</head>
+<body>
+<a class="skip-link" href="#vidwrap">Skip to video</a>
+<div class="app" id="app">
+  <div class="top">
+    <button class="icon-btn" id="menuBtn" type="button" aria-label="Chapters"></button>
+    <div class="tl" id="tl" role="slider" tabindex="0" aria-label="Video position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="pbar"><i id="fill"></i></div><div class="ticks" id="ticks"></div><span class="thumb" id="thumb"></span><span class="tip" id="tip" hidden></span>
+    </div>
+    <span class="xp-pill" id="xp" aria-label="Points"><span id="xpIco"></span><span id="xpN" class="num">0</span></span>
+    <div class="langsw" role="group" aria-label="Language"><button type="button" data-l="en">English</button><button type="button" data-l="hi" lang="hi">हिन्दी</button></div>
+    <button class="icon-btn" id="muteBtn" type="button" aria-label="Voice off"></button>
+    <button class="icon-btn" id="closeBtn" type="button" aria-label="Close"></button>
+  </div>
+
+  <div class="stage grid-bg" id="stage">
+    <!-- watching -->
+    <div class="qgrid fig vgrid" id="watch">
+      <span class="tag lvl" id="part">Part 1</span>
+      <div class="ask"><h2 id="sceneTitle">Loading…</h2></div>
+      <div class="figure" id="vidwrap">
+        <div class="paper vpaper">
+          <video id="v" playsinline preload="metadata" aria-describedby="sceneTitle"></video>
+          <div class="cc" id="cc" aria-live="off"></div>
+          <button class="bigplay" id="bigplay" type="button" aria-label="Play"></button>
+          <div class="spin" id="spin" hidden></div>
+        </div>
+      </div>
+      <div class="dsteps" id="chapters" aria-label="Parts of this video"></div>
+      <div class="vmeta">
+        <span class="num" id="time">0:00 / 0:00</span>
+        <span class="sp"></span>
+        <button class="chipbtn2" id="ccBtn" type="button" aria-pressed="true">CC</button>
+        <button class="chipbtn2" id="speedBtn" type="button" aria-label="Playback speed">1×</button>
+        <button class="chipbtn2" id="modeBtn" type="button" hidden></button>
+        <button class="icon-btn sm" id="fsBtn" type="button" aria-label="Full screen"></button>
+      </div>
+      <p class="meta" id="vmetaTxt"></p>
+    </div>
+
+    <!-- pause-to-check (same look as the lesson question screen) -->
+    <div class="qgrid solo" id="quiz" hidden>
+      <span class="tag hots" id="qTag">Pause and try</span>
+      <div class="ask"><h2 id="qText"></h2></div>
+      <div class="opt-list" id="qOpts" role="radiogroup" aria-labelledby="qText"></div>
+      <div class="hintrow"><button class="hintbtn" id="hintBtn" type="button">Need a hint?</button></div>
+      <div class="callout" id="qHint" hidden><img src="/studio/static/nce/assets/bk-calm.png" alt=""><div class="bubble" role="status" id="qHintTxt"></div></div>
+    </div>
+
+    <!-- finish -->
+    <div class="intro" id="finish" hidden>
+      <div class="intro-mid">
+        <h1 class="title-xl" id="finTitle">Well done!</h1>
+        <p class="meta" id="finSub"></p>
+        <div class="stats">
+          <div class="stat"><b class="num" id="stTime">0:00</b><span id="stTimeL">watched</span></div>
+          <div class="stat"><b class="num" id="stRight">0/0</b><span id="stRightL">right first time</span></div>
+          <div class="stat xp"><b class="num" id="stXp">0</b><span id="stXpL">points</span></div>
+        </div>
+        <div class="guide"><div class="bubble" role="status" id="finBubble"></div><div class="stand"><img class="cheer" src="/studio/static/nce/assets/bk-wave.png" alt="Bal Krishna cheering"></div></div>
+      </div>
+    </div>
+    <div class="err-box" id="err" hidden></div>
+  </div>
+
+  <div class="bar">
+    <div id="fb"></div>
+    <div class="bar-row">
+      <button class="btn btn-back" id="backBtn" type="button"></button>
+      <button class="btn btn-primary" id="mainBtn" type="button" disabled></button>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheetH">
+    <div class="grab"></div><h3 id="sheetH">Chapters</h3><div class="stack-v" id="sheetList"></div>
+  </div>
+  <div class="toast" id="toast" role="status" hidden></div>
+</div>
+<script type="module" src="/studio/static/player.js"></script>
+</body>
+</html>

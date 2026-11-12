@@ -1,0 +1,24 @@
+{$DOMAIN} {
+	encode gzip
+
+	# Speech API gateway
+	handle_path /speech/* {
+		# The gateway caps uploads at 100 MB, but only after reading them (before auth). Stop bigger bodies here:
+		# a declared Content-Length over 110 MB gets 413 at once; max_size cuts off bodies sent without one.
+		@too_big expression `int({http.request.header.Content-Length} != "" ? {http.request.header.Content-Length} : "0") > 115343360`
+		respond @too_big `{"error":"file too large","max_bytes":104857600}` 413
+		request_body {
+			max_size 110MB
+		}
+		reverse_proxy speech-api:8000
+	}
+
+	# EduVid Studio: builder, library, player and media (range requests for seeking)
+	handle /studio* {
+		reverse_proxy studio:8000
+	}
+
+	handle {
+		respond "eduvid ok" 200
+	}
+}

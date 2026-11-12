@@ -1,0 +1,14 @@
+[Unit]
+Description=EduVid nightly backup (pg_dump; GCS copy off for now)
+Requires=docker.service
+After=docker.service eduvid.service
+
+[Service]
+Type=oneshot
+User=hariom
+Group=docker
+WorkingDirectory=/srv/eduvid/app
+# Off-site GCS copy skipped for now (no bucket). Remove this line once the bucket and write scope exist.
+Environment=BACKUP_SKIP_GCS=1
+ExecStart=/bin/bash /srv/eduvid/app/infra/backup/backup.sh
+ExecStartPost=/bin/bash /srv/eduvid/app/infra/backup/restore_test.sh

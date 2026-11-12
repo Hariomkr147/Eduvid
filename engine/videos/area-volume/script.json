@@ -1,0 +1,36 @@
+{
+  "title": "Cylinder Ka Area 2πrh Kyun? Surface Area & Volume",
+  "tts": "omnivoice",
+  "omnivoice": { "language": "Hindi", "instruct": "female, indian accent" },
+  "voice": "omnivoice-female",
+  "lang": "hi",
+  "whisper": "small",
+  "speed": 1.0,
+  "lead": 0.15,
+  "outro": 0.6,
+  "gap": 0.28,
+  "music": "bed",
+  "sources": [
+    "NCERT Mathematics Class 9, Chapter 11 'Surface Areas and Volumes' (curved surface area of a cylinder 2πrh, total 2πr(r + h); curved surface area of a cone πrl with slant height l; volume of a cylinder πr²h; volume of a cone (1/3)πr²h)",
+    "NCERT Mathematics Class 10, Chapter 12 'Surface Areas and Volumes' (net of a cylinder: a rectangle of length 2πr and breadth h plus two circles; the cone's lateral surface opens into a sector of radius l whose arc is 2πr)",
+    "Euclid, Elements XII.10 (a cone is one third of the cylinder with the same base and height), also the classic water-pouring demonstration: three cones fill one cylinder"
+  ],
+  "lines": [
+    { "text": "सिलेंडर का एरिया, टू पाई आर एच क्यों होता है?", "caps": "@0 Cylinder ka *area | @3 *2πrh | @7 *Kyun?", "break": true },
+    { "text": "एक डिब्बा लो, और उसका लेबल सीधा काट दो।", "caps": "@0 Ek *dabba lo | @4 uska *label | @6 seedha *kaat do", "break": true },
+    { "text": "फिर लेबल खोलो, और फ्लैट बिछा दो।", "caps": "@0 Label *kholo | @3 *flat bichha do", "break": true },
+    { "text": "देखो, ये बन गया एक रेक्टेंगल!", "caps": "@0 *Dekho, | @4 ek *rectangle!", "break": true },
+    { "text": "इसकी हाइट, डिब्बे की हाइट है, एच।", "caps": "@0 Iski *height | @2 dabbe ki *height | @6 *h", "break": true },
+    { "text": "और इसकी लंबाई, वही है जो डिब्बे के चारों तरफ़ लिपटी थी।", "caps": "@0 Aur iski *length | @6 dabbe ke *charon taraf | @10 *lipti thi", "break": true },
+    { "text": "यानी सर्कमफ़रेंस, टू पाई आर।", "caps": "@0 Yaani *circumference | @2 *2πr", "break": true },
+    { "text": "लेंथ इनटू हाइट, टू पाई आर एच!", "caps": "@0 Length × *height | @3 = *2πrh!", "break": true },
+    { "text": "ऊपर नीचे के दो ढक्कन जोड़ो, हर एक पाई आर स्क्वेयर।", "caps": "@0 Do *dhakkan jodo | @6 har ek *πr²", "break": true },
+    { "text": "तो टोटल, टू पाई आर एच, प्लस टू पाई आर स्क्वेयर।", "caps": "@0 Toh *total | @2 *2πrh | @6 + *2πr²", "break": true },
+    { "text": "अब cone को खोलो, तो बनता है एक सेक्टर।", "caps": "@0 Ab *cone kholo | @4 banta hai ek *sector", "break": true },
+    { "text": "जिसका एरिया है पाई आर एल, एल मतलब स्लांट हाइट।", "caps": "@0 Area = *πrl | @6 l = *slant height", "break": true },
+    { "text": "और वॉल्यूम? सिलेंडर को सिक्कों का ढेर समझो।", "caps": "@0 Aur *volume? | @4 *sikkon ka dher", "break": true },
+    { "text": "हर सिक्का पाई आर स्क्वेयर, एच ऊंचाई तक, तो पाई आर स्क्वेयर एच।", "caps": "@0 Har sikka *πr² | @5 *h unchai tak | @8 = *πr²h", "break": true },
+    { "text": "और तीन cone मिलकर, एक सिलेंडर भर देते हैं।", "caps": "@0 *Teen cone milkar | @4 ek cylinder *bhar dete", "break": true },
+    { "text": "इसलिए cone का वॉल्यूम, एक तिहाई पाई आर स्क्वेयर एच।", "caps": "@0 Cone ka *volume | @4 = *⅓ πr²h", "break": true }
+  ]
+}

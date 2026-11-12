@@ -1,0 +1,29 @@
+{
+  "title": "Why Is the Area of a Circle Pi R Squared?",
+  "voice": "bm_george",
+  "speed": 1.0,
+  "lead": 0.12,
+  "outro": 0.45,
+  "gap": 0.28,
+  "music": "bed",
+  "sources": [
+    "Archimedes, 'Measurement of a Circle' (c. 260 BC), Proposition 1: the area of a circle equals a right triangle with one leg the radius and the other the circumference, i.e. (1/2) x 2 pi r x r = pi r^2. Harvard archive translation: https://legacy-www.math.harvard.edu/archive/archimedes09/pdf/Measurement.of.the.Circle.pdf",
+    "Wikipedia, 'Area of a circle' (rearrangement proof: sectors rearranged into a near-parallelogram that tends to a rectangle of width pi r and height r; the picture is credited to Nicholas of Cusa, Leonardo da Vinci and Sato Moshun, not Archimedes): https://en.wikipedia.org/wiki/Area_of_a_disk"
+  ],
+  "lines": [
+    { "text": "Why is the area of a circle pi r squared?", "caps": "Why is the *area | of a *circle | pi r *squared?" },
+    { "text": "Well, take a circle, and slice it like a pizza,", "caps": "Take a *circle, | slice it like a *pizza" },
+    { "text": "into lots of thin wedges.", "caps": "Lots of thin *wedges." },
+    { "text": "Now flip every other wedge upside down, and line them up side by side.", "caps": "Flip every *other one | line them *up | side by *side." },
+    { "text": "It looks like a bumpy parallelogram.", "caps": "A bumpy *parallelogram." },
+    { "text": "Slice thinner and thinner, and the bumps flatten out,", "caps": "Thinner and *thinner, | the bumps *flatten" },
+    { "text": "until it's a perfect rectangle.", "caps": "A perfect *rectangle." },
+    { "text": "Its height is just the radius, r.", "caps": "Its *height is | just the *radius." },
+    { "text": "And its width is half the crust, half the circumference,", "caps": "Its *width is | half the *crust, | half the *circumference" },
+    { "text": "which is pi times r.", "caps": "which is *pi r." },
+    { "text": "So the area is pi r times r.", "caps": "So the *area | is pi r *times r." },
+    { "text": "That's pi r squared.", "caps": "That's pi r *squared!", "gap": 0.4 },
+    { "text": "Archimedes proved this more than two thousand years ago,", "caps": "*Archimedes | *proved this | more than *2,000 years" },
+    { "text": "with nothing but a circle and a clever cut.", "caps": "Just a *circle | and a clever *cut." }
+  ]
+}

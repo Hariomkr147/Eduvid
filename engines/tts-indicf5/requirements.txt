@@ -1,0 +1,8 @@
+torch==2.5.1+cu124
+torchaudio==2.5.1+cu124
+f5-tts @ git+https://github.com/ai4bharat/IndicF5.git@13f7c4d627cc10111aea8fe9c0039462cacacdc7
+transformers<4.50
+numpy<=1.26.4
+# datasets>=4 / pyarrow>=20 need NumPy 2; IndicF5 needs NumPy 1.26
+datasets<4
+pyarrow<20

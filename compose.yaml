@@ -1,0 +1,221 @@
+name: eduvid
+
+networks:
+  eduvid:
+    name: eduvid
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+x-env: &env
+  env_file: .env
+  networks: [eduvid]
+
+# GPU engine template: own container, one GPU via device_ids, model cache on the data disk.
+x-engine: &engine
+  # Engines run third-party model code (some trust_remote_code): no env_file, only HF_TOKEN (taken from .env /
+  # the shell; unset stays unset, since an empty HF_TOKEN breaks huggingface_hub). infra/check_secrets.sh checks this.
+  networks: [eduvid]
+  environment: [HF_TOKEN]
+  restart: unless-stopped
+  volumes:
+    - /srv/eduvid/data/models:/models
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request,json,sys; sys.exit(0 if json.load(urllib.request.urlopen('http://localhost:8000/health', timeout=5))['ok'] else 1)"]
+    interval: 15s
+    timeout: 10s
+    retries: 4
+    start_period: 900s
+
+x-gpu0: &gpu0
+  deploy:
+    resources:
+      reservations:
+        devices: [{driver: nvidia, device_ids: ["0"], capabilities: [gpu]}]
+
+x-gpu3: &gpu3
+  deploy:
+    resources:
+      reservations:
+        devices: [{driver: nvidia, device_ids: ["3"], capabilities: [gpu]}]
+
+services:
+  # ---- speech engines on GPU 0 (production) ----
+  tts-omnivoice:
+    <<: [*engine, *gpu0]
+    build: {context: ., dockerfile: engines/tts-omnivoice/Dockerfile}
+    image: eduvid/tts-omnivoice:dev
+
+  tts-kokoro:
+    <<: [*engine, *gpu0]
+    build: {context: ., dockerfile: engines/tts-kokoro/Dockerfile}
+    image: eduvid/tts-kokoro:dev
+
+  asr-whisperx:
+    <<: [*engine, *gpu0]
+    build: {context: ., dockerfile: engines/asr-whisperx/Dockerfile}
+    image: eduvid/asr-whisperx:dev
+
+  # ---- TTS candidates under benchmark, on GPU 3 (idle until Plan 4): docker compose --profile bench up -d ----
+  tts-chatterbox:
+    <<: [*engine, *gpu3]
+    profiles: [bench]
+    build: {context: ., dockerfile: engines/tts-chatterbox/Dockerfile}
+    image: eduvid/tts-chatterbox:dev
+
+  tts-parler:
+    <<: [*engine, *gpu3]
+    profiles: [bench]
+    build: {context: ., dockerfile: engines/tts-parler/Dockerfile}
+    image: eduvid/tts-parler:dev
+
+  tts-indicf5:
+    <<: [*engine, *gpu3]
+    profiles: [bench]
+    build: {context: ., dockerfile: engines/tts-indicf5/Dockerfile}
+    image: eduvid/tts-indicf5:dev
+
+  tts-veena:
+    <<: [*engine, *gpu3]
+    profiles: [bench]
+    build: {context: ., dockerfile: engines/tts-veena/Dockerfile}
+    image: eduvid/tts-veena:dev
+
+  caddy:
+    image: caddy:2.8
+    <<: *env
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  postgres:
+    image: postgres:16
+    <<: *env
+    restart: unless-stopped
+    shm_size: 1gb
+    volumes:
+      - /srv/eduvid/data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    # MinIO RELEASE.2024-11-07 (upstream stopped publishing public images/binaries; this is Bitnami's frozen build).
+    image: bitnamilegacy/minio:2024.11.7
+    <<: *env
+    restart: unless-stopped
+    user: "1001:1001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+      MINIO_BROWSER: "off"
+    volumes:
+      - /srv/eduvid/data/minio:/bitnami/minio/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: create the bucket (idempotent).
+  minio-init:
+    image: bitnamilegacy/minio-client:2024.11.17
+    <<: *env
+    depends_on:
+      minio: {condition: service_healthy}
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mc alias set local http://minio:9000 "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" >/dev/null
+        && mc mb --ignore-existing "local/$$S3_BUCKET"
+
+  # OpenAI-compatible speech gateway (CPU only). Engines are reached via ENGINE_*_URL.
+  speech-api:
+    build: {context: ., dockerfile: services/speech-api/Dockerfile}
+    <<: *env
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/livez', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  # EduVid Studio: video builder, library and NCE player at https://$DOMAIN/studio/ (CPU). Writes scripts with
+  # OpenRouter, reads NCERT content read-only from NCERT_DATABASE_URL, chains voice → words → render jobs.
+  studio:
+    build: {context: ., dockerfile: services/studio/Dockerfile}
+    image: eduvid/studio:dev
+    <<: *env
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+      speech-api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/studio/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  # voice + words jobs (CPU). Calls the gateway with PIPELINE_API_KEY from .env.
+  voice-worker:
+    build: {context: ., dockerfile: services/voice-worker/Dockerfile}
+    <<: *env
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+      speech-api: {condition: service_healthy}
+
+  # GPU render workers: headless Chrome WebGL on the L4 + NVENC drafts. One per GPU (1 and 2).
+  render-worker-1: &render
+    build: {context: ., dockerfile: services/render-worker/Dockerfile}
+    image: eduvid/render-worker:dev
+    <<: *env
+    restart: unless-stopped
+    init: true            # reap Chrome/ffmpeg children that outlive a step
+    shm_size: 8gb
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics,video
+      GPU_INDEX: "1"
+    volumes:
+      - /srv/eduvid/data/scratch:/data/scratch
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, device_ids: ["1"], capabilities: [gpu, compute, utility, graphics, video]}]
+
+  render-worker-2:
+    <<: *render
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics,video
+      GPU_INDEX: "2"
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, device_ids: ["2"], capabilities: [gpu, compute, utility, graphics, video]}]
+
+  # One-off runner for tests, migrations and admin scripts: `make test`, `make migrate`.
+  tools:
+    build: {context: ., dockerfile: infra/tools/Dockerfile}
+    <<: *env
+    profiles: [tools]
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+    volumes:
+      - ./:/app
+      - /srv/eduvid/data/scratch:/data/scratch

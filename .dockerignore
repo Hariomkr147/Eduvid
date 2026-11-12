@@ -1,0 +1,14 @@
+# Never send secrets or local state into a build context.
+.env
+.env.*
+!.env.example
+.git
+.superpowers
+data
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+engine/videos/*/renders
+engine/videos/*/review
+engine/videos/*/kaggle_out

@@ -1,0 +1,5 @@
+torch==2.5.1+cu124
+torchaudio==2.5.1+cu124
+parler-tts @ git+https://github.com/huggingface/parler-tts.git@d108732cd57788ec86bc857d99a6cabd66663d68
+# 0.2.1+ ships protobuf-5 generated code; descript-audiotools needs protobuf<5
+sentencepiece==0.2.0

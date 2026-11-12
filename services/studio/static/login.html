@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='12' fill='%235A4499'/><text x='20' y='27' font-size='17' font-family='sans-serif' font-weight='800' fill='white' text-anchor='middle'>EV</text></svg>">
+<link rel="stylesheet" href="/studio/static/nce/fonts/fonts.css">
+<link rel="stylesheet" href="/studio/static/nce/theme.css">
+<link rel="stylesheet" href="/studio/static/studio.css">
+<title>Log in · EduVid Studio</title></head>
+<body><div class="login">
+  <form class="card" id="f">
+    <div class="brand" style="margin-bottom:16px"><span class="logo">EV</span><h1>EduVid Studio</h1><span class="pill badge">Video Factory</span></div>
+    <div class="field"><label for="pw">Password</label><input type="password" id="pw" autocomplete="current-password" required autofocus></div>
+    <div class="err" id="e" hidden></div>
+    <div class="actions"><button class="btn primary block" type="submit">Log in</button></div>
+    <div class="bk-row"><img src="/studio/static/nce/assets/bk-wave.png" alt=""><div class="bubble">Namaste! Let's make a lesson video.</div></div>
+  </form>
+</div>
+<script type="module">
+import { api } from '/studio/static/common.js';
+document.getElementById('f').onsubmit = async (ev) => {
+  ev.preventDefault(); const e = document.getElementById('e'); e.hidden = true;
+  try { await api('/login', { body: { password: document.getElementById('pw').value } }); location.href = new URLSearchParams(location.search).get('next') || '/studio/'; }
+  catch (err) { e.textContent = err.status === 401 ? 'That password is not right.' : err.message; e.hidden = false; }
+};
+</script></body></html>
