@@ -122,3 +122,12 @@ def test_fix_tex_literals_doubles_single_backslashes_only():
     assert "A.tex('\\\\frac{1}{2} \\\\times 2\\\\pi r', 1, 2)" in out
     assert "A.tex(\"\\\\pi r^2\", 3, 4)" in out          # already doubled: unchanged
     assert "A.text('a\\nb', 0, 0)" in out                # not a tex call: unchanged
+
+
+def test_shape_colour_words_and_fill_strings_are_accepted():
+    from studio.schema import Shape
+    s = Shape(type="circle", color="Blue", fill="primary")
+    assert s.color == "primary" and s.fill is True
+    assert Shape(type="circle", color="red").color == "ink"          # no red in teaching frames
+    assert Shape(type="circle", fill="none").fill is False
+    assert Shape(type="circle", color="#123456").color == "ink"

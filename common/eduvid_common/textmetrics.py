@@ -65,6 +65,26 @@ _SYMBOLS = {
 _TOKEN = re.compile(r"\d+(?:\.\d+)?|[π×%+=²³°]|(?<=\d)\s*x\s*(?=\d)|(?<![A-Za-z])x(?![A-Za-z])")
 
 
+def _composed(n: int) -> list[str]:
+    th, rest = divmod(n, 1000)
+    h, r = divmod(rest, 100)
+    hi, de, en = [], [], []
+    if th:
+        hi += [_HI[th] if th <= 100 else str(th), "हज़ार"]
+        de += [(_DE_ONES[th] if th < 20 else _int_words(th)[1]), "थाउज़ेंड"]
+        en += [(_EN_ONES[th] if th < 20 else _int_words(th)[2]), "thousand"]
+    if h:
+        hi += [_HI[h], "सौ"]
+        de += [_DE_ONES[h], "हंड्रेड"]
+        en += [_EN_ONES[h], "hundred"]
+    if r:
+        sub = _int_words(r)
+        hi.append(sub[0])
+        de.append(sub[1] if len(sub) > 2 else sub[0])
+        en.append(sub[2] if len(sub) > 2 else sub[-1])
+    return [" ".join(hi), " ".join(de), " ".join(en)]
+
+
 def _int_words(n: int) -> list[str]:
     out = []
     if n <= 100:
@@ -75,6 +95,8 @@ def _int_words(n: int) -> list[str]:
         t, o = divmod(n, 10)
         out.append(_DE_TENS[t - 2] + ("" if o == 0 else " " + _DE_ONES[o]))
         out.append(_EN_TENS[t - 2] + ("" if o == 0 else " " + _EN_ONES[o]))
+    if 100 < n < 100000:  # as said: "दो सौ छप्पन", "two hundred fifty six", "टू हंड्रेड फ़िफ़्टी सिक्स"
+        out += _composed(n)
     if n > 100 or not out:  # digit by digit
         d = str(n)
         out += [" ".join(_HI[int(c)] for c in d), " ".join(_DE_ONES[int(c)] for c in d),
@@ -125,3 +147,71 @@ def cer_spoken(ref: str, hyp: str) -> float:
                 best, best_c = cand, c
         choice[i] = best
     return min(cer(ref, hyp), cer(ref, render()))
+
+
+# ---------------------------------------------------------------------------
+# Mixed-script CER. For Hinglish, Whisper often writes the English words it hears in Latin script
+# ("एक right angle triangle लो") even with a Devanagari prompt, so a correct take scores as 50-70 % "error"
+# against the Devanagari script. When the transcript has Latin letters, both sides are also compared as a
+# consonant skeleton (राइट एंगल → RTNGL, "right angle" → RTNGL; vowels, aspiration and h are dropped), and that
+# score, scaled by SKELETON_WEIGHT, can stand in. Dropped, garbled or invented words still score high
+# (measured on real IndicF5 takes: correct 0.04-0.10 after scaling, a dropped half-sentence 0.31).
+# ---------------------------------------------------------------------------
+SKELETON_WEIGHT = 0.6
+_DEV_CLASS = {}
+for _chars, _cls in [("कखक़ख़", "K"), ("गघग़", "G"), ("चछ", "C"), ("जझ", "J"), ("ज़", "S"), ("टठतथ", "T"),
+                     ("डढड़ढ़दध", "D"), ("णनङञं", "N"), ("पफफ़", "P"), ("बभव", "B"), ("म", "M"), ("यय़", "Y"),
+                     ("रऱ", "R"), ("लळ", "L"), ("शषस", "S")]:
+    for _ch in _chars:
+        _DEV_CLASS[_ch] = _cls
+_LAT_DIGRAPHS = (("gh", ""), ("ph", "f"), ("th", "t"), ("sh", "s"), ("ch", "C"), ("ck", "k"), ("qu", "kw"), ("x", "ks"))
+_LAT_CLASS = dict(zip("ckqgjtdnmpfbvwrlszy", "KKKGJTDNMPPBBBRLSSY"))
+_LATIN = re.compile(r"[A-Za-z]")
+
+
+def skeleton(s: str) -> str:
+    """Consonant classes of s, script-neutral (Devanagari and Latin map onto the same classes)."""
+    s = normalize(s)
+    for a, b in _LAT_DIGRAPHS:
+        s = s.replace(a, b)
+    out: list[str] = []
+    for ch in s:
+        c = "C" if ch == "C" else _DEV_CLASS.get(ch) or _LAT_CLASS.get(ch)
+        if c and (not out or out[-1] != c):
+            out.append(c)
+    return "".join(out)
+
+
+def _skeleton_cer(ref: str, hyp: str) -> float:
+    r = skeleton(ref)
+    if not r:
+        return 0.0 if not skeleton(hyp) else 1.0
+    parts: list[str | list[str]] = []
+    pos = 0
+    for m in _TOKEN.finditer(hyp):
+        parts.append(hyp[pos:m.start()])
+        parts.append(_readings(m.group(0)) or [m.group(0)])
+        pos = m.end()
+    parts.append(hyp[pos:])
+    choice = [p[0] if isinstance(p, list) else p for p in parts]
+
+    def score() -> float:
+        return levenshtein(r, skeleton(" ".join(choice))) / len(r)
+    for i, p in enumerate(parts):
+        if isinstance(p, list):
+            best, best_s = choice[i], score()
+            for cand in p:
+                choice[i] = cand
+                s_ = score()
+                if s_ < best_s:
+                    best, best_s = cand, s_
+            choice[i] = best
+    return score()
+
+
+def cer_mixed(ref: str, hyp: str) -> float:
+    """cer_spoken(), or the scaled consonant-skeleton CER when the transcript mixes in Latin script."""
+    c = cer_spoken(ref, hyp)
+    if not _LATIN.search(hyp):
+        return c
+    return min(c, round(SKELETON_WEIGHT * _skeleton_cer(ref, hyp), 4))

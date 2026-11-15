@@ -71,3 +71,41 @@ def test_spoken_never_worse_than_plain():
 
 def test_spoken_wrong_number_still_counts():
     assert cer_spoken("दो पाई आर एच", "3 पाई आर एच") > 0
+
+
+# real IndicF5 takes (2026-11-15): Whisper wrote the English words it heard in Latin script
+from eduvid_common.textmetrics import cer_mixed, skeleton  # noqa: E402
+
+MIXED_OK = [
+    ("एक राइट एंगल्ड ट्रायंगल लो, जिसका राइट एंगल बी पर हो।", "एक right angle triangle लो, जिसका right angle बी पर हो,"),
+    ("और ए सी, यानी साइड वाली लाइन, स्लांट हाइट है, एल।", "और AC यानि साइड वाली लाइन स्लांट हाइट है L."),
+    ("एल इज़ इक्वल टू रूट ऑफ़ सोलह स्क्वेयर्ड प्लस बारह स्क्वेयर्ड।", "L is equal to root of 16 squared plus 12 squared."),
+    ("दो सौ छप्पन प्लस एक सौ चवालीस, यानी चार सौ। रूट करो तो बीस सेंटीमीटर!", "256 प्लस 144 यानि 400, रूट करो तो 20 सेंटिमीटर."),
+]
+MIXED_BAD = [
+    ("एल इज़ इक्वल टू रूट ऑफ़ सोलह स्क्वेयर्ड प्लस बारह स्क्वेयर्ड।", "L is equal to root of the triangle base."),
+    ("एक राइट एंगल्ड ट्रायंगल लो, जिसका राइट एंगल बी पर हो।", "एक right angle triangle लो."),
+]
+
+
+def test_skeleton_is_script_neutral():
+    assert skeleton("राइट एंगल") == skeleton("right angle") == "RTNGL"
+
+
+def test_cer_mixed_accepts_correct_latin_takes():
+    for ref, hyp in MIXED_OK:
+        assert cer_mixed(ref, hyp) <= 0.12, (ref, hyp, cer_mixed(ref, hyp))
+
+
+def test_cer_mixed_still_catches_dropped_or_invented_words():
+    for ref, hyp in MIXED_BAD:
+        assert cer_mixed(ref, hyp) > 0.12, (ref, hyp, cer_mixed(ref, hyp))
+
+
+def test_cer_mixed_equals_cer_spoken_for_devanagari_only():
+    ref, hyp = "दो सौ बीस", "दो सौ तीस"
+    assert cer_mixed(ref, hyp) == cer_spoken(ref, hyp)
+
+
+def test_numbers_over_100_read_as_spoken():
+    assert cer_spoken("दो सौ बीस सेंटीमीटर", "220 सेंटीमीटर") < 0.05

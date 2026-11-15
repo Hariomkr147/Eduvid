@@ -15,7 +15,7 @@ from collections.abc import Callable
 import numpy as np
 
 from eduvid_common.speakable import violations
-from eduvid_common.textmetrics import cer_spoken
+from eduvid_common.textmetrics import cer_mixed
 
 SR = 24000
 CER_MAX = 0.12
@@ -108,7 +108,7 @@ def _take(text: str, voice: str, language: str, synth: Synth, transcribe: Transc
     for seed in SEEDS:
         wav = synth(text, voice, seed)
         hyp = transcribe(wav, language)
-        c = round(cer_spoken(text, hyp), 4)
+        c = round(cer_mixed(text, hyp), 4)
         tried.append({"seed": seed, "cer": c, "transcript": hyp})
         if best is None or c < best[0]:
             best = (c, seed, wav)

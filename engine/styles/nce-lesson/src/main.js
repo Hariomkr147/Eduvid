@@ -89,7 +89,7 @@ function drawScene(s, i, t) {
   const a = K.eo(K.prog(S.t, 0, 0.32)), dy = (1 - a) * 16;     // screenIn: fade up 8 px (16 at 2x)
   c.save(); c.globalAlpha = i === 0 ? 1 : a; c.translate(0, i === 0 ? 0 : dy);
   if (s.custom && !s.fallback) {
-    header(S);
+    header(S, { noTitle: s.sc.kind === 'title' });   // a title scene draws its own big title
     c.save();
     try { s.custom(c, S.t, s.A); } catch (e) { s.fallback = String(e && e.message || e); }
     c.restore();

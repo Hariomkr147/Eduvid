@@ -48,6 +48,11 @@ class Step(Anchor):
     key: bool = False
 
 
+COLOR_NAMES = ("ink", "primary", "start", "good", "flame", "gold", "muted")
+COLOR_WORDS = {"black": "ink", "dark": "ink", "red": "ink", "bad": "ink", "blue": "primary", "highlight": "primary",
+               "purple": "start", "violet": "start", "brand": "start", "green": "good", "orange": "flame",
+               "yellow": "gold", "grey": "muted", "gray": "muted", "light": "muted"}
+
 SHAPES = ("point", "segment", "line", "arrow", "circle", "arc", "rect", "polygon", "cylinder", "cone", "sphere",
           "hemisphere", "cuboid", "angle", "axes", "curve", "label", "brace", "dim")
 
@@ -69,6 +74,23 @@ class Shape(Anchor):
     color: Literal["ink", "primary", "start", "good", "flame", "gold", "muted"] = "ink"
     fill: bool = False
     dashed: bool = False
+
+    @field_validator("color", mode="before")
+    @classmethod
+    def _color(cls, v):
+        """Models write plain colour words: map them onto the kit's tokens (never red in teaching frames)."""
+        if not isinstance(v, str):
+            return "ink"
+        v = v.strip().lower()
+        return v if v in COLOR_NAMES else COLOR_WORDS.get(v, "ink")
+
+    @field_validator("fill", "dashed", mode="before")
+    @classmethod
+    def _flag(cls, v):
+        """`fill: "primary"` or `fill: "#EEF3FE"` means filled; "", "none", "false" mean not."""
+        if isinstance(v, str):
+            return v.strip().lower() not in ("", "none", "false", "no", "0", "transparent")
+        return bool(v)
 
 
 class Scene(BaseModel):

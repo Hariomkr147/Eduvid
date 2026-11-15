@@ -11,6 +11,17 @@ const SHADOW = ['window', 'document', 'fetch', 'XMLHttpRequest', 'globalThis', '
 const CTRL = { '\f': '\\f', '\t': '\\t', '\b': '\\b', '\r': '\\r', '\v': '\\v', '\n': '\\n' };
 export const fixTex = (s) => String(s).replace(/[\f\t\b\r\v\n]/g, (c) => CTRL[c]);
 
+// Model code computes radii like r * (1 - p) that land on -2e-16 at the end of an animation; the canvas throws on any
+// negative radius. Clamp to 0 once, for every caller (it is never meaningful to draw a negative radius).
+const P2D = CanvasRenderingContext2D.prototype;
+if (!P2D.__nceClamped) {
+  const arc0 = P2D.arc, ell0 = P2D.ellipse, rr0 = P2D.roundRect;
+  P2D.arc = function (x, y, r, ...a) { return arc0.call(this, x, y, Math.max(0, r), ...a); };
+  P2D.ellipse = function (x, y, rx, ry, ...a) { return ell0.call(this, x, y, Math.max(0, rx), Math.max(0, ry), ...a); };
+  if (rr0) P2D.roundRect = function (x, y, w, h, r) { return rr0.call(this, x, y, w, h, typeof r === 'number' ? Math.max(0, r) : r); };
+  P2D.__nceClamped = true;
+}
+
 export function compile(code) {
   // eslint-disable-next-line no-new-func
   const f = new Function('ctx', 't', 'A', ...SHADOW, '"use strict";\n' + code);
