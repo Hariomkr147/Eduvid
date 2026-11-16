@@ -1,5 +1,6 @@
 """Prompts for the script (NCERT-grounded) and for LLM-written scene animations."""
 import json
+import re
 
 LANG_RULES = {
     "hinglish": (
@@ -32,6 +33,20 @@ On-screen text is SHORT (a label, a phrase, maths), never a copy of the narratio
   y=base line, r=radius, h=height) · sphere(x,y,r) · cuboid(x,y,w,h,r=depth) · angle(x,y,r,a1,a2,label) ·
   axes(x,y,w,h) · curve(pts) · label(x,y,label) · brace/dim(x,y,x2,y2,label = a measurement like "7 cm").
   Labels only (letters, values, "r", "h = 10 cm"), never sentences. Colors: ink, primary, start, good, flame, gold, muted.
+- "solid": a real 3D solid the engine animates (Class 9 Ch 11 / Class 10 Ch 12 style surface areas and volumes, or
+  any lesson about 3D shapes). Use it for every scene where a 3D shape is formed, measured, opened up, filled or cut;
+  never draw solids as a flat "figure". solid: {shape: cylinder | cone | sphere | hemisphere | cuboid | cube | frustum,
+  r, h (and r2 = top radius of a frustum; l, b, h for a cuboid; l = side of a cube), unit, color, labels?} with the
+  lesson's real numbers (labels default to "r = 7 cm"; give labels {"r": "r", "h": "h"} when the scene is about
+  letters, not numbers). moves: [{do, line, word, ...}], each starts when its word is spoken:
+    revolve (a flat profile turns round the axis and sweeps out the solid: cylinder, cone, sphere, hemisphere,
+    frustum) · unroll (the curved surface opens into its net: cylinder → rectangle, cone → sector; for curved/total
+    surface area) · fill {level 0-1} (liquid rises inside: volume, capacity) · cut {axis "h" across | "v" down
+    through the axis, at 0.1-0.9} (cross-section) · orbit {turn degrees} (the camera walks round it) ·
+    show {dims ["r","h","l","b","r2"]} (dimension lines + labels; l is the slant height of a cone) ·
+    paint {part "curved" | "base" | "top" | "all", color} (highlights the surface being talked about).
+  2-5 moves per scene, spread over its lines. points (optional, 1-4): [{text, tex, line, word}] formula notes shown
+  beside the solid ({"text": {"en": "Curved surface"}, "tex": "2\\pi r h"}).
 - "example": a solved NCERT-style example. question, steps: [{text, tex?, line, word}], answer, answer_tex.
 - "check": a pause-and-try question. question, options (exactly 4, short), correct (0-3), hint, explain, pause_s
   (5-10). lines: line 0 asks the question and says "pause karke try karo" (or the language equivalent);
@@ -40,6 +55,10 @@ On-screen text is SHORT (a label, a phrase, maths), never a copy of the narratio
 Anchors: `line` = index of the line in THIS scene's `lines` when the item appears; `word` = the first few letters
 of a word in that line's `say` exactly as written there (Devanagari for Hinglish/Hindi), or "" to appear at the line start.
 """
+
+# lessons about 3D shapes (English and Hindi terms): only these get "solid" scenes offered in the plan
+SOLID_WORDS = re.compile(r"cylind|\bcones?\b|conical|spher|cuboid|\bcubes?\b|frustum|surface area|volume|"
+                         r"सिलेंडर|बेलन|शंकु|गोला|गोले|अर्धगोल|घनाभ|\bघन\b|आयतन|पृष्ठीय", re.I)
 
 SCRIPT_SYSTEM = """You are an expert NCERT teacher and educational video scriptwriter for Indian school students.
 You write narrated lesson videos that a bright child enjoys and a subject teacher would sign off.
@@ -57,7 +76,7 @@ Rules:
 def script_prompt(units: list[dict], pasted: str, settings: dict, glossary: list[dict]) -> list[dict]:
     lang = settings.get("language", "hinglish")
     minutes = float(settings.get("minutes", 3))
-    kinds = settings.get("kinds") or ["title", "concept", "board", "figure", "example", "check", "summary"]
+    kinds = settings.get("kinds") or ["title", "concept", "board", "figure", "solid", "example", "check", "summary"]
     checks = int(settings.get("checks", 2))
     screen = settings.get("screen_lang", "en")
     words = int(minutes * (115 if lang != "english" else 135))
@@ -75,8 +94,10 @@ def script_prompt(units: list[dict], pasted: str, settings: dict, glossary: list
                 f"caption \"{g['caption'] if lang == 'hinglish' else g['hindi_term']}\"" for g in glossary[:120]]
         gl = "\nGlossary (use these spoken forms for these terms):\n" + "\n".join(rows) + "\n"
     extra = settings.get("instructions", "").strip()
+    if "solid" in kinds and not SOLID_WORDS.search(" ".join(material) + " " + extra):
+        kinds = [k for k in kinds if k != "solid"]          # not a lesson about 3D shapes
     n_scenes = scene_target(minutes)
-    plan = [k for k in ("title", "concept", "figure", "board", "example", "check", "concept", "board", "example",
+    plan = [k for k in ("title", "concept", "solid", "board", "example", "check", "concept", "board", "example",
                         "check", "figure", "concept", "example", "check", "summary") if k in kinds]
     L = lambda: [{"say": "…", "caps": "…", "en": "…"}, {"say": "…", "caps": "…", "en": "…"}]
     schema = {
@@ -88,6 +109,11 @@ def script_prompt(units: list[dict], pasted: str, settings: dict, glossary: list
              "points": [{"text": {"en": "…", "hi": "…"}, "tex": "", "line": 0, "word": "…"}]},
             {"kind": "board", "title": {"en": "…", "hi": "…"}, "lines": L(), "custom_brief": "…",
              "steps": [{"tex": "…", "text": {"en": "…", "hi": "…"}, "line": 0, "word": ""}]},
+            {"kind": "solid", "title": {"en": "…", "hi": "…"}, "lines": L(),
+             "solid": {"shape": "cylinder", "r": 7, "h": 10, "unit": "cm"},
+             "moves": [{"do": "revolve", "line": 0, "word": "…"}, {"do": "show", "line": 1, "word": "…", "dims": ["r", "h"]},
+                       {"do": "unroll", "line": 2, "word": "…"}],
+             "points": [{"text": {"en": "…", "hi": "…"}, "tex": "2\\pi r h", "line": 2, "word": "…"}]},
             {"kind": "check", "title": {"en": "…", "hi": "…"}, "lines": L(), "question": {"en": "…", "hi": "…"},
              "options": [{"en": "…", "hi": "…"}] * 4, "correct": 0, "hint": {"en": "…", "hi": "…"},
              "explain": {"en": "…", "hi": "…"}, "pause_s": 7},

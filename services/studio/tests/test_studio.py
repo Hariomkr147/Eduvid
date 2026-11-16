@@ -184,3 +184,65 @@ def test_custom_prompt_asks_for_a_different_look():
         assert must in user
     assert "One moving thing at a time" not in user                  # the template's rule, not this mode's
     assert not prompts.code_problems("A.bg(A.grad(0,0,0,1080,['#bfe3ff','#fff'])); A.camera(t, [{at: 0, zoom: 1}]);")
+
+
+# ---------- 3D solid scenes (roadmap phase 2) ----------
+
+def _with_solid(**scene):
+    d = json.loads(json.dumps(FIX))
+    base = {"kind": "solid", "title": {"en": "Open the cylinder"}, "lines": d["scenes"][1]["lines"][:3],
+            "solid": {"shape": "cylinder", "r": 7, "h": 10, "unit": "cm"},
+            "moves": [{"do": "revolve", "line": 0}, {"do": "show", "line": 1, "dims": ["r", "h"]},
+                      {"do": "unroll", "line": 2}]}
+    base.update(scene)
+    d["scenes"].insert(2, base)
+    return d
+
+
+def test_solid_scene_is_valid_and_clamps_its_moves():
+    d = _with_solid(moves=[{"do": "fill", "line": 9, "len": 50, "level": 3}, {"do": "cut", "at": "0.99", "axis": "v"},
+                           {"do": "paint", "part": "base", "color": "orange"}, {"do": "orbit", "turn": "lots", "level": None}])
+    sc = Script(**d).scenes[2]
+    assert sc.kind == "solid" and sc.solid.shape == "cylinder" and sc.solid.r == 7
+    fill, cut, paint, orbit = sc.moves
+    assert fill.line == len(sc.lines) - 1 and fill.len == 10 and fill.level == 1
+    assert cut.at == 0.9 and cut.axis == "v" and paint.color == "flame" and orbit.turn == 360
+
+
+def test_solid_scene_needs_its_solid_and_a_known_shape():
+    with pytest.raises(ValidationError):
+        Script(**_with_solid(solid=None))
+    with pytest.raises(ValidationError):
+        Script(**_with_solid(solid={"shape": "pyramid", "r": 3}))
+    assert Script(**_with_solid(solid={"shape": "Box", "l": 4, "b": 3, "h": 2},
+                                moves=[{"do": "show"}])).scenes[2].solid.shape == "cuboid"
+
+
+def test_structure_problems_reject_moves_a_solid_cannot_do():
+    from studio.pipeline import structure_problems
+    ok = {"minutes": 1, "kinds": ["title", "concept", "board", "figure", "solid", "example", "check", "summary"], "checks": 1}
+    assert structure_problems(Script(**_with_solid()), ok) == []
+    probs = structure_problems(Script(**_with_solid(solid={"shape": "sphere", "r": 7})), ok)
+    assert any("'unroll' works only for a cylinder or a cone" in p for p in probs)
+    probs = structure_problems(Script(**_with_solid(solid={"shape": "cube", "l": 4}, moves=[{"do": "revolve"}])), ok)
+    assert any("'revolve' does not make a cube" in p for p in probs)
+
+
+def test_llm_report_skips_solid_scenes():
+    from studio.pipeline import llm_report
+    script = {"scenes": [{"id": "s1", "kind": "title", "title": {"en": "T"}}, {"id": "s2", "kind": "solid", "title": {"en": "S"}}]}
+    txt = "s1   0.00 →   5.00  (5.00 s)  title · llm animation\ns2   5.00 →   9.00  (4.00 s)  solid · 3D"
+    assert llm_report(txt, script) == {"animatable": 1, "animated": 1, "fallbacks": []}
+
+
+def _unit(context):
+    return [{"id": "u1", "name": "Unit", "grade": 9, "subject": "S", "chapter": "C", "chapter_number": 1,
+             "section_code": "1.1", "section_name": "N", "bloom": "", "difficulty": "", "description": "", "context": context}]
+
+
+def test_script_prompt_offers_solids_only_for_3d_lessons():
+    st = {"language": "english", "minutes": 3, "checks": 1}
+    cone = prompts.script_prompt(_unit("The curved surface area of a right circular cone is πrl."), "", st, [])[1]["content"]
+    poem = prompts.script_prompt(_unit("The poem describes the river at dawn."), "", st, [])[1]["content"]
+    assert "Scene kinds to use: title, concept, board, figure, solid," in cone and "solid" in cone.split("rough plan:")[1][:80]
+    assert "Scene kinds to use: title, concept, board, figure, example," in poem

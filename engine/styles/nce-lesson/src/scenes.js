@@ -5,13 +5,14 @@ import {
   texSize, iconCircle, rr,
 } from './kit.js';
 import { drawShapes } from './figure.js';
+import { drawSolid } from './solid.js';
 
 export const tr = (bi, lang) => (bi ? (bi[lang] || bi.en || bi.hi || '') : '');
 const KIND = {
   title: { en: 'Lesson', hi: 'पाठ', tone: 'brand' }, concept: { en: 'Idea', hi: 'विचार', tone: 'level' },
   board: { en: 'On the board', hi: 'बोर्ड पर', tone: 'level' }, figure: { en: 'Picture it', hi: 'चित्र से समझें', tone: 'level' },
   example: { en: 'Worked example', hi: 'हल किया उदाहरण', tone: 'level' }, check: { en: 'Pause and try', hi: 'रुककर सोचो', tone: 'gold' },
-  summary: { en: 'Summary', hi: 'सारांश', tone: 'good' },
+  summary: { en: 'Summary', hi: 'सारांश', tone: 'good' }, solid: { en: 'In 3D', hi: '3D में', tone: 'level' },
 };
 
 export function layout(W, H, captions) {
@@ -156,6 +157,32 @@ function figure(S) {
   }
 }
 
+// ---------- solid (3D: three.js under the 2D layer; see solid.js) ----------
+function solid(S) {
+  const { t, lang, box, portrait } = S, sc = S.sc;
+  header(S);
+  const pts = sc.points || [], side = pts.length > 0;
+  const fw = portrait || !side ? box.w : box.w * 0.6, fh = portrait && side ? box.h * 0.6 : box.h;
+  const inner = figureCard(box.x, box.y, fw, fh, { grid: S.grid, alpha: fade(t, 0, 0.3) });
+  ctx.save(); rr(inner.x, inner.y, inner.w, inner.h, 22); ctx.clip();
+  drawSolid(S, inner);
+  ctx.restore();
+  if (!side) return;
+  const x = portrait ? box.x : box.x + fw + 48, w = portrait ? box.w : box.w - fw - 48;
+  let y = portrait ? box.y + fh + 40 : box.y + 10, current = -1;
+  pts.forEach((p, i) => { if (t >= S.at(p)) current = i; });
+  pts.forEach((p, i) => {
+    const t0 = S.at(p), a = fade(t, t0, 0.3); if (a <= 0) return;
+    const note = tr(p.text, lang), sz = p.tex ? texSize(p.tex, 52) : null, k = sz ? Math.min(1, (w - 100) / Math.max(1, sz.w)) : 1;
+    const th = note ? wrap(note, w - 100, 38, 500, false).length * 54 : 0, h = Math.max(96, th + (sz ? sz.h * k + 30 : 0) + 34);
+    if (i === current) { ctx.save(); ctx.globalAlpha = a; rr(x, y, w, h, 24); ctx.fillStyle = C.primarySoft; ctx.fill(); ctx.restore(); }
+    chip(i + 1, x + 46, y + 48, { r: 26, alpha: a, solid: i === current });
+    if (note) para(note, x + 90, y + 56, w - 110, { size: 38, color: i === current ? C.ink : C.ink2, alpha: a });
+    if (sz) tex(p.tex, x + 90, y + th + 26 + sz.h * k * 0.75, { size: 52 * k, alpha: a, progress: eo(prog(t, t0, 0.7)) });
+    y += h + 18;
+  });
+}
+
 // ---------- example ----------
 function example(S) {
   const { t, lang, box, portrait } = S, sc = S.sc;
@@ -272,7 +299,7 @@ function summary(S) {
   }
 }
 
-export const TEMPLATES = { title, concept, board, figure, example, check, summary };
+export const TEMPLATES = { title, concept, board, figure, example, check, summary, solid };
 
 // every LaTeX string a template scene may draw, with its colour (prepared before frames are drawn)
 export function sceneTex(sc) {

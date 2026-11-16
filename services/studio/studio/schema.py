@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from eduvid_common.speakable import violations
 
-KINDS = ("title", "concept", "board", "figure", "example", "check", "summary")
-Kind = Literal["title", "concept", "board", "figure", "example", "check", "summary"]
+KINDS = ("title", "concept", "board", "figure", "solid", "example", "check", "summary")
+Kind = Literal["title", "concept", "board", "figure", "solid", "example", "check", "summary"]
 LANGUAGES = ("hinglish", "hindi", "english")
 
 
@@ -93,6 +93,86 @@ class Shape(Anchor):
         return bool(v)
 
 
+def _colour(v, default):
+    if not isinstance(v, str):
+        return default
+    v = v.strip().lower()
+    return v if v in COLOR_NAMES else COLOR_WORDS.get(v, default)
+
+
+SOLIDS = ("cylinder", "cone", "sphere", "hemisphere", "cuboid", "cube", "frustum")
+MOVES = ("revolve", "unroll", "fill", "cut", "orbit", "show", "paint")
+UNROLLS = ("cylinder", "cone")               # solids whose curved surface opens into a flat net
+REVOLVES = ("cylinder", "cone", "sphere", "hemisphere", "frustum")
+
+
+class Solid(BaseModel):
+    """A 3D solid drawn by the engine with three.js (engine/styles/nce-lesson/src/solid.js). Dimensions are the
+    real numbers of the lesson (the engine keeps their proportions); r2 is a frustum's top radius; a cuboid is
+    l × b × h and a cube has side l."""
+    shape: Literal[SOLIDS]  # type: ignore[valid-type]
+    r: float = Field(default=0, ge=0)
+    r2: float = Field(default=0, ge=0)
+    h: float = Field(default=0, ge=0)
+    l: float = Field(default=0, ge=0)
+    b: float = Field(default=0, ge=0)
+    unit: str = Field(default="cm", max_length=8)
+    color: Literal["ink", "primary", "start", "good", "flame", "gold", "muted"] = "primary"
+    labels: dict[str, str] = {}               # dimension label override: {"r": "r", "h": "h = 24 cm"}
+
+    @field_validator("shape", mode="before")
+    @classmethod
+    def _shape(cls, v):
+        v = str(v).strip().lower()
+        return {"cuboidal": "cuboid", "box": "cuboid", "ball": "sphere", "hemi-sphere": "hemisphere",
+                "right circular cone": "cone", "right circular cylinder": "cylinder"}.get(v, v)
+
+    @field_validator("color", mode="before")
+    @classmethod
+    def _color(cls, v):
+        return _colour(v, "primary")
+
+    @field_validator("labels", mode="before")
+    @classmethod
+    def _labels(cls, v):
+        return {str(k): str(x)[:24] for k, x in v.items()} if isinstance(v, dict) else {}
+
+
+class Move(Anchor):
+    """One step of a solid's animation, starting when its anchor word is spoken."""
+    do: Literal[MOVES]  # type: ignore[valid-type]
+    len: float | None = None                  # seconds (engine default per move)
+    dims: list[str] = []                      # show: which dimensions to label (r, h, l, b, r2); [] = all
+    part: Literal["curved", "base", "top", "all"] = "curved"   # paint
+    color: Literal["ink", "primary", "start", "good", "flame", "gold", "muted"] = "gold"   # paint
+    level: float = 1                          # fill: how full, 0-1
+    at: float = 0.5                           # cut: where (fraction of the height)
+    axis: Literal["h", "v"] = "h"             # cut: h = across (a circle), v = down through the axis
+    turn: float = 360                         # orbit: degrees
+
+    @field_validator("color", mode="before")
+    @classmethod
+    def _color(cls, v):
+        return _colour(v, "gold")
+
+    @field_validator("len", "level", "at", "turn", mode="before")
+    @classmethod
+    def _number(cls, v, info):
+        """Numbers the model writes as text are read; anything unreadable takes the default."""
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return cls.model_fields[info.field_name].default
+
+    @model_validator(mode="after")
+    def _ranges(self):
+        self.len = None if self.len is None else min(10.0, max(0.3, self.len))
+        self.level = min(1.0, max(0.05, self.level))
+        self.at = min(0.9, max(0.1, self.at))
+        self.turn = min(720.0, max(-720.0, self.turn))
+        return self
+
+
 class Scene(BaseModel):
     id: str = ""
     kind: Kind
@@ -114,6 +194,8 @@ class Scene(BaseModel):
     answer_tex: str = ""
     next: Bi = Bi()
     pause_s: float = Field(default=6, ge=2, le=20)
+    solid: Solid | None = None                # "solid" scenes: the 3D solid ...
+    moves: list[Move] = []                    # ... and what happens to it, anchored to the narration
     custom_brief: str = ""                    # what an LLM-written animation should show
     custom_code: str | None = None            # filled by the code step (LLM-animation mode)
 
@@ -136,7 +218,7 @@ class Script(BaseModel):
     def _kinds(self):
         for s in self.scenes:
             n = len(s.lines)
-            for item in [*s.points, *s.steps, *s.shapes]:
+            for item in [*s.points, *s.steps, *s.shapes, *s.moves]:
                 if item.line >= n:
                     item.line = n - 1
             if s.kind == "check":
@@ -147,6 +229,8 @@ class Script(BaseModel):
                 if n < 2:
                     raise ValueError(f"scene {s.id}: a check needs a question line and an answer line")
                 s.lines[0].gap = s.pause_s
+            if s.kind == "solid" and s.solid is None:
+                raise ValueError(f"scene {s.id}: a solid scene needs solid {{shape, r, h, ...}}")
         return self
 
     def speakable_problems(self) -> list[str]:

@@ -22,7 +22,7 @@ from eduvid_common import jobs
 from eduvid_common import storage
 
 from . import llm, ncert, prompts, store
-from .schema import Script, voice_script
+from .schema import REVOLVES, UNROLLS, Script, voice_script
 
 log = logging.getLogger("studio.pipeline")
 ENGINE = Path(__file__).resolve().parents[1] / "engine"      # mounted/copied: styles/nce-lesson + shared/tools
@@ -90,6 +90,14 @@ def structure_problems(s: Script, settings: dict) -> list[str]:
     bad = sorted({sc.kind for sc in s.scenes} - set(kinds)) if kinds else []
     if bad:
         out.append(f"scene kinds {bad} are switched off: use only {kinds}")
+    for sc in s.scenes:
+        if sc.kind != "solid" or sc.solid is None:
+            continue
+        for m in sc.moves:
+            if m.do == "unroll" and sc.solid.shape not in UNROLLS:
+                out.append(f"{sc.id}: 'unroll' works only for a cylinder or a cone, not a {sc.solid.shape}")
+            if m.do == "revolve" and sc.solid.shape not in REVOLVES:
+                out.append(f"{sc.id}: 'revolve' does not make a {sc.solid.shape}: use show, fill, cut or orbit")
     want = int(settings.get("checks", 0)) if "check" in kinds else 0
     have = sum(sc.kind == "check" for sc in s.scenes)
     if have != want:
@@ -221,7 +229,8 @@ def write_code(vid: str) -> None:
     st = v["settings"]
     model = st.get("code_model") or v["model"]
     script = v["script"]
-    targets = [i for i, s in enumerate(script["scenes"]) if s["kind"] != "check" and not s.get("custom_code")]
+    # check scenes stay templates (the player pauses on them); solid scenes are drawn by the engine in 3D
+    targets = [i for i, s in enumerate(script["scenes"]) if s["kind"] not in ("check", "solid") and not s.get("custom_code")]
     store.event(vid, "code", "running", f"Writing animation code for {len(targets)} scenes with {model}")
     done, failed = 0, []
     try:
@@ -266,13 +275,14 @@ _SHOT = re.compile(r"^(\S+)\s+[\d.]+\s+→\s+[\d.]+\s+\(\s*[\d.]+ s\)\s+(\w+)(?:
 def llm_report(check_txt: str, script: dict, code_failed: list[dict] | None = None) -> dict:
     """Which scenes of an LLM-animation render really used LLM code, and why the others fell back to the template.
     A scene is a fallback when the studio got no usable code for it (code_failed) or the engine rejected the code
-    at boot (TEMPLATE FALLBACK in check.txt). Check scenes are always templates (the player pauses on them)."""
+    at boot (TEMPLATE FALLBACK in check.txt). Check scenes are always templates (the player pauses on them) and
+    solid scenes are drawn in 3D by the engine: neither counts."""
     ids = {s["id"] for s in script["scenes"]}
     why = {f["id"]: f["reason"] for f in (code_failed or [])}
     animatable, animated, fallbacks = 0, 0, []
     for raw in check_txt.splitlines():
         m = _SHOT.match(raw.strip())
-        if not m or m.group(1) not in ids or m.group(2) == "check":
+        if not m or m.group(1) not in ids or m.group(2) in ("check", "solid"):
             continue
         sid, note = m.group(1), m.group(3) or ""
         animatable += 1

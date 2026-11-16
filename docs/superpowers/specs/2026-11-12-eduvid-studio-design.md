@@ -48,7 +48,7 @@ The LLM returns JSON validated against a schema (pydantic). Invalid JSON gets on
 
 ```json
 { "title": {"en": "...", "hi": "..."}, "language": "hinglish|hindi|english",
-  "scenes": [ { "id": "s1", "kind": "title|concept|board|figure|example|check|summary",
+  "scenes": [ { "id": "s1", "kind": "title|concept|board|figure|solid|example|check|summary",
                 "title": {"en":"","hi":""},
                 "lines": [ {"say": "speakable Devanagari/English", "caps": "caption text, @n anchors"} ],
                 "data": { ... per kind ... },
@@ -62,6 +62,7 @@ The LLM returns JSON validated against a schema (pydantic). Invalid JSON gets on
 | `concept` | points[] (each revealed on a spoken word) | Ask-style heading + steps-card bullets with chip numbers |
 | `board` | steps[] `{latex, at_word, note}` | Figure card (lavender frame, warm paper, 30 px grid), KaTeX lines written in, key step in blue |
 | `figure` | shapes[] (circle, cone, cylinder, sphere, rect, line, arrow, label, angle, axis, point) with `at_word` | Figure card, SVG drawn on, labels only (no sentences) |
+| `solid` | solid `{shape, r, h, r2, l, b, unit, color, labels}`, moves[] `{do: revolve·unroll·fill·cut·orbit·show·paint, line, word}`, points[] | 3D (added 2026-11-16, roadmap phase 2): three.js renders into a hidden WebGL canvas copied under the 2D layer; rims, dimension lines and formula notes are 2D on top. A blank or missing WebGL frame draws the 2D figure instead. Never LLM-coded. |
 | `example` | question, steps[], answer | Question card, numbered steps card, green answer feedback card |
 | `check` | question, options[4], correct, hint, explain | Option cards A–D + "pause and try" countdown; the **player** pauses here and shows a real interactive question |
 | `summary` | points[], next | Stat-tile style recap, Bal Krishna cheering |

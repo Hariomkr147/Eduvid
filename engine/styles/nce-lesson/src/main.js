@@ -5,6 +5,7 @@ import * as K from './kit.js';
 import { TEMPLATES, layout, header, sceneTex, tr } from './scenes.js';
 import { shapeTex } from './figure.js';
 import { compile, makeA, dryRun } from './custom.js';
+import { loadSolids, GL } from './solid.js';
 
 const cv = document.getElementById('cv');
 const OP = (window.OP = { ready: false });
@@ -95,7 +96,7 @@ const FRAMINGS = [[0, 0, 1], [-0.1, 0.04, 1.045], [0.09, -0.03, 1.03], [0.04, 0.
 function beatsOf(s) {
   const ts = [0];
   for (let l = 1; l < s.n; l++) ts.push(s.L(l));
-  for (const it of [...(s.sc.points || []), ...(s.sc.steps || []), ...(s.sc.shapes || [])]) ts.push(s.at(it));
+  for (const it of [...(s.sc.points || []), ...(s.sc.steps || []), ...(s.sc.shapes || []), ...(s.sc.moves || [])]) ts.push(s.at(it));
   const sorted = ts.filter((x) => x >= 0 && x < s.dur - 0.8).sort((a, b) => a - b);
   const merged = [];
   for (const x of sorted) if (!merged.length || x - merged[merged.length - 1] >= BEAT_MIN) merged.push(x);
@@ -126,7 +127,8 @@ function cameraOf(s, st) {
 }
 
 function applyCamera(c, s, st) {
-  if (LESSON.camera === false || s.sc.kind === 'check') return;   // the player stops on check scenes: keep them still
+  // the player stops on check scenes: keep them still; solid scenes move their own 3D camera
+  if (LESSON.camera === false || s.sc.kind === 'check' || s.sc.kind === 'solid') return;
   const cam = cameraOf(s, st);
   if (Math.abs(cam.z - 1) < 1e-4) return;
   c.translate(cam.x, cam.y); c.scale(cam.z, cam.z); c.translate(-cam.x, -cam.y);
@@ -173,6 +175,7 @@ function cues() {
     if (i > 0) out.push({ t: s.start + 0.02, type: 'whoosh', gain: 0.12 });
     const sc = s.sc;
     [...(sc.points || []), ...(sc.steps || []), ...(sc.shapes || [])].forEach((it) => out.push({ t: s.start + s.at(it), type: 'pop', gain: 0.16 }));
+    (sc.moves || []).forEach((m) => out.push({ t: s.start + s.at(m), type: ['revolve', 'unroll', 'orbit', 'cut'].includes(m.do) ? 'whoosh' : 'pop', gain: 0.12 }));
     if (sc.kind === 'check' && s.n > 1) out.push({ t: s.start + s.L(1), type: 'ding', gain: 0.3 });
   });
   return out.filter((c) => c.t < DUR - 0.05);
@@ -192,10 +195,11 @@ function cues() {
     const lines = await getJSON('data/lines.json'), words = await getJSON('data/words.json');
     DUR = lines.duration;
     SCENES = buildTiming(LESSON.script, lines, words);
+    if (SCENES.some((s) => s.sc.kind === 'solid')) await loadSolids();   // three.js only when a scene needs it
     CAPS = buildCaptions(LESSON.script, lines, words);
     // LLM-animation mode: compile + dry-run each scene's code; any problem → the template draws that scene
     for (const [i, s] of SCENES.entries()) {
-      if (LESSON.mode !== 'llm' || !s.sc.custom_code || s.sc.kind === 'check') continue;
+      if (LESSON.mode !== 'llm' || !s.sc.custom_code || s.sc.kind === 'check' || s.sc.kind === 'solid') continue;
       try {
         s.custom = compile(s.sc.custom_code);
         s.ownCamera = /A\.camera\s*\(/.test(s.sc.custom_code);
@@ -215,7 +219,8 @@ function cues() {
     OP.draw = draw;
     OP.frame = (t, q = 0.92, fmt = 'image/jpeg') => { draw(t); return cv.toDataURL(fmt, q); };
     OP.shots = () => SCENES.map((s) => ({ id: s.sc.id, at: +s.start.toFixed(3), end: +s.end.toFixed(3),
-      note: `${s.sc.kind}${s.custom ? (s.fallback ? ` · TEMPLATE FALLBACK: ${s.fallback}` : ' · llm animation') : ''}` }));
+      note: `${s.sc.kind}${s.sc.kind === 'solid' ? (GL.ok ? ' · 3D' : ` · 3D OFF, 2D drawing: ${GL.error || 'no WebGL'}`) : ''}${s.custom ? (s.fallback ? ` · TEMPLATE FALLBACK: ${s.fallback}` : ' · llm animation') : ''}` }));
+    OP.gl = () => ({ ...GL });
     OP.captions = () => CAPS.map((c) => ({ s: +c.s.toFixed(3), e: +c.e.toFixed(3), text: c.txt, miss: false }));
     OP.cues = () => cues().sort((a, b) => a.t - b.t);
     OP.ready = true;
