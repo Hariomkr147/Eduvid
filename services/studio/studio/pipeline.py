@@ -91,6 +91,12 @@ def structure_problems(s: Script, settings: dict) -> list[str]:
     if bad:
         out.append(f"scene kinds {bad} are switched off: use only {kinds}")
     for sc in s.scenes:
+        out += opening_problems(sc)
+        said = " ".join(ln.en or ln.caps for ln in sc.lines)
+        if sc.kind in ("concept", "figure") and "solid" in kinds and _SHAPE_ACTION.search(said) and _SOLID_NAME.search(said):
+            out.append(f"{sc.id} ({sc.kind}) describes a 3D shape being formed, opened up, filled or cut: make it a "
+                       "\"solid\" scene with the matching moves (revolve, unroll, fill, cut)")
+    for sc in s.scenes:
         if sc.kind != "solid" or sc.solid is None:
             continue
         for m in sc.moves:
@@ -103,6 +109,33 @@ def structure_problems(s: Script, settings: dict) -> list[str]:
     if have != want:
         out.append(f"include exactly {want} check scene(s) (there are {have})")
     return out
+
+
+# a line that shows a 3D shape being made, opened, filled or cut (English track of each line)
+_SHAPE_ACTION = re.compile(r"\b(spin|spins|spinning|spun|rotat\w*|revolv\w*|unroll\w*|unfold\w*|open(?:s|ed)? it (?:up|out)|"
+                           r"cut (?:it|the \w+) (?:open|along)|fill(?:s|ed)? (?:it|the \w+) with|pour\w*)\b", re.I)
+_SOLID_NAME = re.compile(r"\b(cylinder|cone|sphere|hemisphere|cuboid|cube|frustum|triangle|rectangle|semicircle)s?\b", re.I)
+
+
+def opening_problems(sc) -> list[str]:
+    """Scenes whose only visuals are points / steps / shapes must show the first one at the start of line 0
+    (on "" or one of the first four spoken words), or the screen sits empty while the narrator talks."""
+    if sc.kind not in ("concept", "board", "figure"):
+        return []
+    items = [*sc.points, *sc.steps, *sc.shapes]
+    if not items:
+        return [f"{sc.id} ({sc.kind}) has nothing to show: give it points, steps or shapes"]
+    def early(it) -> bool:
+        if it.line != 0:
+            return False
+        if not it.word:
+            return True
+        words = sc.lines[0].say.split()
+        return any(w.startswith(it.word) or it.word.startswith(w) for w in words[:4])
+    if not any(early(it) for it in items):
+        return [f"{sc.id} ({sc.kind}): nothing appears until later in the scene, so the screen starts empty; anchor "
+                "the first point / step / shape to line 0 with word \"\" (or one of its first four words)"]
+    return []
 
 
 def _validate(obj: dict, settings: dict) -> tuple[Script | None, list[str]]:

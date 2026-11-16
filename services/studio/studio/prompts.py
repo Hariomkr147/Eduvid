@@ -45,6 +45,9 @@ On-screen text is SHORT (a label, a phrase, maths), never a copy of the narratio
     through the axis, at 0.1-0.9} (cross-section) · orbit {turn degrees} (the camera walks round it) ·
     show {dims ["r","h","l","b","r2"]} (dimension lines + labels; l is the slant height of a cone) ·
     paint {part "curved" | "base" | "top" | "all", color} (highlights the surface being talked about).
+  When a line describes a shape being formed (a triangle or rectangle spun round a side), opened up, filled or cut,
+  THAT scene is a "solid", never a concept or figure. The next scene about the same solid does not revolve it again:
+  it starts from the finished solid (show, paint, unroll, cut).
   2-5 moves per scene, spread over its lines. points (optional, 1-4): [{text, tex, line, word}] formula notes shown
   beside the solid ({"text": {"en": "Curved surface"}, "tex": "2\\pi r h"}).
 - "example": a solved NCERT-style example. question, steps: [{text, tex?, line, word}], answer, answer_tex.
@@ -52,6 +55,8 @@ On-screen text is SHORT (a label, a phrase, maths), never a copy of the narratio
   (5-10). lines: line 0 asks the question and says "pause karke try karo" (or the language equivalent);
   line 1+ reveal and explain the answer. The player stops at the end of line 0 and the student answers.
 - "summary": the close. points (3-4 key takeaways), next (what comes next).
+Never an empty screen: in concept, board and figure scenes the first point / step / shape is anchored to line 0 with
+word "" (or one of its first four words); later items follow the narration.
 Anchors: `line` = index of the line in THIS scene's `lines` when the item appears; `word` = the first few letters
 of a word in that line's `say` exactly as written there (Devanagari for Hinglish/Hindi), or "" to appear at the line start.
 """

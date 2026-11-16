@@ -221,7 +221,9 @@ def test_solid_scene_needs_its_solid_and_a_known_shape():
 def test_structure_problems_reject_moves_a_solid_cannot_do():
     from studio.pipeline import structure_problems
     ok = {"minutes": 1, "kinds": ["title", "concept", "board", "figure", "solid", "example", "check", "summary"], "checks": 1}
-    assert structure_problems(Script(**_with_solid()), ok) == []
+    probs = structure_problems(Script(**_with_solid()), ok)
+    # the fixture's figure scene opens a cylinder into a rectangle: that belongs in a solid scene now
+    assert [p[:12] for p in probs] == ["s2 (figure) "] and "make it a \"solid\" scene" in probs[0]
     probs = structure_problems(Script(**_with_solid(solid={"shape": "sphere", "r": 7})), ok)
     assert any("'unroll' works only for a cylinder or a cone" in p for p in probs)
     probs = structure_problems(Script(**_with_solid(solid={"shape": "cube", "l": 4}, moves=[{"do": "revolve"}])), ok)
@@ -246,3 +248,37 @@ def test_script_prompt_offers_solids_only_for_3d_lessons():
     poem = prompts.script_prompt(_unit("The poem describes the river at dawn."), "", st, [])[1]["content"]
     assert "Scene kinds to use: title, concept, board, figure, solid," in cone and "solid" in cone.split("rough plan:")[1][:80]
     assert "Scene kinds to use: title, concept, board, figure, example," in poem
+
+
+# ---------- no empty scene openings; 3D actions belong in solid scenes ----------
+
+def _concept(points, lines=None):
+    d = json.loads(json.dumps(FIX))
+    lines = lines or [{"say": "पहले एक ट्रायंगल सोचो जिसका राइट एंगल बी पर है", "en": "Imagine a right triangle."},
+                      {"say": "अब इसे घुमाओ", "en": "Now look at it."}]
+    d["scenes"].insert(1, {"kind": "concept", "title": {"en": "Idea"}, "lines": lines, "points": points})
+    return Script(**d).scenes[1]
+
+
+def test_opening_problems_flag_a_late_first_point():
+    from studio.pipeline import opening_problems
+    late = _concept([{"text": "Spin it", "line": 1, "word": "घुमाओ"}])
+    assert "starts empty" in opening_problems(late)[0]
+    assert opening_problems(_concept([{"text": "Triangle", "line": 0, "word": ""}])) == []
+    assert opening_problems(_concept([{"text": "Triangle", "line": 0, "word": "ट्राय"}])) == []      # 3rd word: early
+    assert opening_problems(_concept([{"text": "B", "line": 0, "word": "बी"}]))                      # 9th word: late
+    assert "nothing to show" in opening_problems(_concept([]))[0]
+
+
+def test_structure_problems_send_3d_actions_to_solid_scenes():
+    from studio.pipeline import structure_problems
+    kinds = {"minutes": 1, "kinds": ["title", "concept", "board", "figure", "solid", "example", "check", "summary"], "checks": 1}
+    d = json.loads(json.dumps(FIX))
+    d["scenes"].insert(1, {"kind": "concept", "title": {"en": "Idea"}, "points": [{"text": "x", "line": 0}],
+                           "lines": [{"say": "इसे घुमाओ", "en": "Spin the right triangle about side AB."}]})
+    probs = structure_problems(Script(**d), kinds)
+    assert any("make it a \"solid\" scene" in p for p in probs)
+    d["scenes"][1]["lines"][0]["en"] = "The Earth spins once a day."           # no shape named: fine
+    del d["scenes"][2]                                                          # (the fixture's own unrolling figure)
+    assert not any("solid" in p for p in structure_problems(Script(**d), kinds))
+    assert not any("solid" in p for p in structure_problems(Script(**d), {**kinds, "kinds": kinds["kinds"][:4]}))

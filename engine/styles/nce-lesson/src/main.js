@@ -38,6 +38,15 @@ function buildTiming(script, lines, words) {
       }
       return s.L(li);
     };
+    // No empty openings: in scenes whose only visuals are their points / steps / shapes, a first item anchored more
+    // than 1.5 s in comes in at 0.6 s instead (the screen was blank for 9 s in a real lesson, 2026-11-16).
+    if (['concept', 'board', 'figure'].includes(s.sc.kind)) {
+      const items = [...(s.sc.points || []), ...(s.sc.steps || []), ...(s.sc.shapes || [])];
+      if (items.length) {
+        const raw = s.at, first = items.reduce((a, it) => (raw(it) < raw(a) ? it : a));
+        if (raw(first) > 1.5) s.at = (item) => (item === first ? 0.6 : raw(item));
+      }
+    }
   }
   return scenes;
 }
