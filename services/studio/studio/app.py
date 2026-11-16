@@ -341,8 +341,8 @@ def patch_settings(vid: str, body: dict):
     v = _video(vid)
     if v["status"] not in ("review", "failed"):
         raise HTTPException(409, f"video is {v['status']}")
-    allowed = {"mode", "aspect", "voice", "quality", "burn_captions", "chrome", "grid", "bk", "music", "sfx", "pace",
-               "code_model", "cap_usd"}
+    allowed = {"mode", "aspect", "voice", "quality", "burn_captions", "chrome", "grid", "bk", "music", "sfx", "camera",
+               "pace", "code_model", "cap_usd"}
     st = {**v["settings"], **{k: x for k, x in body.items() if k in allowed}}
     store.update(vid, settings=st)
     return st

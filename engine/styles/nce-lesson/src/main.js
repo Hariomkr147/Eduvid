@@ -84,25 +84,84 @@ function sceneState(s, i, t) {
     bk: LESSON.bk, grid: LESSON.grid, captions: LESSON.captions, chrome: !!LESSON.chrome };
 }
 
-function drawScene(s, i, t) {
+// ---------- camera beats ----------
+// A still frame for 15-30 s loses children. Every scene is cut into beats (a new line, or a point/step/shape that
+// appears), merged when closer than 1.6 s and split when longer than 6 s. Each beat gets its own framing (a small
+// punch-in towards a different part of the frame) that eases in over 0.6 s, plus a slow push inside the beat.
+// Zoom stays ≤ 1.07 so nothing inside the layout margins is cropped. A pure function of t, like everything else.
+const BEAT_MIN = 1.6, BEAT_MAX = 6, BEAT_SPLIT = 4.5;
+const FRAMINGS = [[0, 0, 1], [-0.1, 0.04, 1.045], [0.09, -0.03, 1.03], [0.04, 0.05, 1.06], [-0.06, -0.02, 1.025]];
+
+function beatsOf(s) {
+  const ts = [0];
+  for (let l = 1; l < s.n; l++) ts.push(s.L(l));
+  for (const it of [...(s.sc.points || []), ...(s.sc.steps || []), ...(s.sc.shapes || [])]) ts.push(s.at(it));
+  const sorted = ts.filter((x) => x >= 0 && x < s.dur - 0.8).sort((a, b) => a - b);
+  const merged = [];
+  for (const x of sorted) if (!merged.length || x - merged[merged.length - 1] >= BEAT_MIN) merged.push(x);
+  const out = [];
+  merged.forEach((x, k) => {
+    const end = k + 1 < merged.length ? merged[k + 1] : s.dur, len = end - x;
+    const parts = len > BEAT_MAX ? Math.ceil(len / BEAT_SPLIT) : 1;
+    for (let p = 0; p < parts; p++) out.push(x + (len * p) / parts);
+  });
+  return out;
+}
+
+function framing(s, k) {
+  if (k <= 0) return { fx: 0, fy: 0, z: 1 };
+  const f = FRAMINGS[((k + s.g0) % (FRAMINGS.length - 1)) + 1];
+  return { fx: f[0], fy: f[1], z: f[2] };
+}
+
+function cameraOf(s, st) {
+  if (!s.beats) s.beats = beatsOf(s);
+  const B = s.beats; let k = 0;
+  while (k + 1 < B.length && B[k + 1] <= st) k++;
+  const prev = framing(s, k - 1), cur = framing(s, k);
+  const e = k === 0 ? 1 : K.eio(K.prog(st, B[k], 0.6));
+  const end = k + 1 < B.length ? B[k + 1] : s.dur, push = 1 + 0.012 * K.clamp((st - B[k]) / Math.max(0.5, end - B[k]));
+  const fx = K.lerp(prev.fx, cur.fx, e), fy = K.lerp(prev.fy, cur.fy, e), z = K.lerp(prev.z, cur.z, e) * (k === 0 ? 1 : push);
+  return { x: LAY.x + LAY.w * (0.5 + fx), y: LAY.y + LAY.h * (0.5 + fy), z };
+}
+
+function applyCamera(c, s, st) {
+  if (LESSON.camera === false || s.sc.kind === 'check') return;   // the player stops on check scenes: keep them still
+  const cam = cameraOf(s, st);
+  if (Math.abs(cam.z - 1) < 1e-4) return;
+  c.translate(cam.x, cam.y); c.scale(cam.z, cam.z); c.translate(-cam.x, -cam.y);
+}
+
+// Returns false when the scene's LLM code threw on this frame: the caller repaints the frame from the template.
+// (Only this frame: frames are captured in parallel browsers, so a scene must not switch modes part-way through.)
+function drawScene(s, i, t, asTemplate = false) {
   const S = sceneState(s, i, t), c = K.ctx;
   const a = K.eo(K.prog(S.t, 0, 0.32)), dy = (1 - a) * 16;     // screenIn: fade up 8 px (16 at 2x)
   c.save(); c.globalAlpha = i === 0 ? 1 : a; c.translate(0, i === 0 ? 0 : dy);
-  if (s.custom && !s.fallback) {
+  if (s.custom && !s.fallback && !asTemplate) {
     header(S, { noTitle: s.sc.kind === 'title' });   // a title scene draws its own big title
     c.save();
-    try { s.custom(c, S.t, s.A); } catch (e) { s.fallback = String(e && e.message || e); }
-    c.restore();
-    c.setTransform(1, 0, 0, 1, 0, i === 0 ? 0 : dy); c.globalAlpha = i === 0 ? 1 : a;
-  } else TEMPLATES[s.sc.kind](S);
+    if (!s.ownCamera) applyCamera(c, s, S.t);         // scenes that call A.camera() frame themselves
+    let ok = true;
+    try { s.custom(c, S.t, s.A); } catch (e) { ok = false; s.runtimeError = `${e && e.message || e} (t=${S.t.toFixed(2)})`; }
+    c.restore(); c.restore();
+    return ok;
+  } else {
+    applyCamera(c, s, S.t);
+    TEMPLATES[s.sc.kind](S);
+  }
   c.restore();
+  return true;
 }
 
 function draw(t) {
   t = K.clamp(t, 0, DUR - 1e-4);
+  // Start every frame from a clean context: LLM code that returns early between ctx.save() and ctx.restore() leaves
+  // states (clips, alpha, transforms) on the stack, and they pile up over thousands of frames in one capture page.
+  if (K.ctx.reset) K.ctx.reset();
   background();
   let i = SCENES.length - 1; while (i > 0 && SCENES[i].start > t) i--;
-  drawScene(SCENES[i], i, t);
+  if (!drawScene(SCENES[i], i, t)) { background(); drawScene(SCENES[i], i, t, true); }
   K.ctx.setTransform(1, 0, 0, 1, 0, 0); K.ctx.globalAlpha = 1;
   if (LESSON.captions) drawCaption(t);
 }
@@ -139,6 +198,7 @@ function cues() {
       if (LESSON.mode !== 'llm' || !s.sc.custom_code || s.sc.kind === 'check') continue;
       try {
         s.custom = compile(s.sc.custom_code);
+        s.ownCamera = /A\.camera\s*\(/.test(s.sc.custom_code);
         const S = sceneState(s, i, s.start); s.A = makeA(S);
         const err = dryRun(s.custom, S, s.A);
         if (err) s.fallback = err;

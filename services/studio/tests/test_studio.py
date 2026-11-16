@@ -85,6 +85,11 @@ def test_caption_chunks_without_words_spread_evenly():
     ("window.location = 'x'", True),
     ("const f = Function('return 1')", True),
     ("x.constructor.constructor('alert(1)')()", True),
+    ("// swept surface while rotating\nA.circle(1, 2, 3)", False),
+    ("/* fetch nothing */ A.text('turn it while it spins', 1, 2)", False),
+    ("A.text(`${window.name}`, 1, 2)", True),                      # template literal: ${…} is code
+    ("x['constructor']['constructor']('1')()", True),               # strings still checked for these
+    ("A.text('it\\'s fine', 1, 2); while (1) {}", True),
 ])
 def test_code_filter(code, bad):
     assert bool(prompts.code_problems(code)) is bad
@@ -131,3 +136,51 @@ def test_shape_colour_words_and_fill_strings_are_accepted():
     assert Shape(type="circle", color="red").color == "ink"          # no red in teaching frames
     assert Shape(type="circle", fill="none").fill is False
     assert Shape(type="circle", color="#123456").color == "ink"
+
+
+CHECK_TXT = """duration 144.52 s
+s1      0.00 →  12.87  (12.87 s)  title · llm animation
+s2     12.87 →  32.85  (19.98 s)  concept · llm animation
+s3     32.85 →  48.27  (15.42 s)  figure · TEMPLATE FALLBACK: Failed to execute 'arc': The radius provided (-2.2e-15) is negative. (t=4.92)
+s4     48.27 →  81.79  (33.51 s)  board
+s5     81.79 →  99.00  (17.21 s)  check
+captions:
+    0.07–1.35   Cone kya hai?"""
+
+REPORT_SCRIPT = {"scenes": [{"id": f"s{i}", "kind": k, "title": {"en": t}} for i, (k, t) in enumerate(
+    [("title", "Meet the Cone"), ("concept", "How a Cone Is Made"), ("figure", "Parts of a Cone"),
+     ("board", "Deriving the Surface Area"), ("check", "Try it")], start=1)]}
+
+
+def test_llm_report_names_every_fallback_and_why():
+    from studio.pipeline import llm_report, report_message
+    rep = llm_report(CHECK_TXT, REPORT_SCRIPT, [{"id": "s4", "reason": "no usable code: uses forbidden 'window'"}])
+    assert rep["animatable"] == 4 and rep["animated"] == 2          # the check scene is never animated
+    assert [f["id"] for f in rep["fallbacks"]] == ["s3", "s4"]
+    assert "radius" in rep["fallbacks"][0]["reason"] and "Parts of a Cone" in rep["fallbacks"][0]["name"]
+    assert "forbidden" in rep["fallbacks"][1]["reason"]
+    msg = report_message(rep)
+    assert msg.startswith("LLM animation: 2 of 4 scenes animated") and "s3 “Parts of a Cone”" in msg
+
+
+def test_llm_report_all_animated():
+    from studio.pipeline import llm_report, report_message
+    txt = "s1   0.00 →   5.00  (5.00 s)  title · llm animation\ns2   5.00 →   9.00  (4.00 s)  concept · llm animation"
+    rep = llm_report(txt, REPORT_SCRIPT)
+    assert rep == {"animatable": 2, "animated": 2, "fallbacks": []}
+    assert report_message(rep) == "LLM animation: 2 of 2 scenes animated"
+
+
+def test_llm_report_without_code_reason():
+    from studio.pipeline import llm_report
+    rep = llm_report("s4   0.00 →  33.51  (33.51 s)  board", REPORT_SCRIPT)
+    assert rep["fallbacks"][0]["reason"] == "no animation code was written for this scene"
+
+
+def test_custom_prompt_asks_for_a_different_look():
+    sc = {"id": "s2", "kind": "figure", "title": {"en": "Parts of a Cone"}, "lines": [{"say": "यह कोन है", "en": "This is a cone"}]}
+    user = prompts.custom_prompt({"title": {"en": "Cone"}}, sc, "16:9")[1]["content"]
+    for must in ("A.camera(", "A.stage", "A.bg(", "A.grad(", "Do NOT rebuild that", "no bullet lists"):
+        assert must in user
+    assert "One moving thing at a time" not in user                  # the template's rule, not this mode's
+    assert not prompts.code_problems("A.bg(A.grad(0,0,0,1080,['#bfe3ff','#fff'])); A.camera(t, [{at: 0, zoom: 1}]);")

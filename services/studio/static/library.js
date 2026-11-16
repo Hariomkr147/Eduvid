@@ -11,6 +11,10 @@ async function load() {
   if (key !== lastData) { all = data; lastData = key; render(); }   // nothing changed: leave the cards alone
   if (all.some((v) => WORK.includes(v.status) && v.status !== 'review')) setTimeout(load, 5000);
 }
+function fallbackPill(v) {
+  const r = (v.variants || []).find((x) => x.mode === 'llm' && x.llm)?.llm;
+  return r && r.fallbacks.length ? `<span class="pill warn" title="${esc(r.fallbacks.map((f) => f.name).join(', '))}">Template in ${r.fallbacks.length}/${r.animatable} scenes</span>` : '';
+}
 function render() {
   const q = $('#q').value.trim().toLowerCase(), f = $('input[name=f]:checked').value;
   const list = all.filter((v) => (f === 'all' || (f === 'work' ? WORK.includes(v.status) : v.status === f))
@@ -27,7 +31,7 @@ function render() {
       <a class="thumb" href="${first ? `/studio/watch/${v.id}` : `/studio/?v=${v.id}`}" aria-label="${esc(v.title)}">${thumb}<span class="st">${statusPill(v.status)}</span>${v.duration_s ? `<span class="dur">${mmss(v.duration_s)}</span>` : ''}</a>
       <div class="meta"><strong>${esc(v.title || v.target?.label || 'Untitled')}</strong>
         <small>${esc([v.target?.grade && `Class ${v.target.grade}`, v.target?.subject, v.target?.chapter].filter(Boolean).join(' · ') || 'Pasted material')}</small>
-        <div class="row"><span class="pill info">${esc(v.model.split('/').pop())}</span>${(v.variants?.length ? v.variants.map((x) => x.mode) : [v.settings?.mode]).map((m) => `<span class="pill badge">${esc(MODE[m] || (m === 'both' ? 'Both' : m))}</span>`).join('')}<span class="pill cost">${money(v.cost_usd)}</span></div>
+        <div class="row"><span class="pill info">${esc(v.model.split('/').pop())}</span>${(v.variants?.length ? v.variants.map((x) => x.mode) : [v.settings?.mode]).map((m) => `<span class="pill badge">${esc(MODE[m] || (m === 'both' ? 'Both' : m))}</span>`).join('')}<span class="pill cost">${money(v.cost_usd)}</span>${fallbackPill(v)}</div>
         <small>${ago(v.created_at)}</small></div>
       <div class="acts">${first ? `<a class="btn small primary" href="/studio/watch/${v.id}">Watch</a>` : ''}<a class="btn small" href="/studio/?v=${v.id}">${v.status === 'review' ? 'Review script' : 'Open'}</a>
         ${ready.length > 1 ? `<a class="btn small" href="/studio/compare?v=${v.id}">Compare modes</a>` : ''}${pair.length > 1 ? `<a class="btn small" href="/studio/compare?group=${v.compare_id}">Compare models</a>` : ''}

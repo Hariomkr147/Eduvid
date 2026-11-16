@@ -168,7 +168,7 @@ function settings() {
   return {
     language: radio('lang'), screen_lang: radio('screen'), voice: $('#voice').value, mode: radio('mode'), aspect: radio('aspect'),
     minutes: +$('#minutes').value, kinds: $$('#kinds input:checked').map((i) => i.value), checks: +$('#checks').textContent,
-    quality: radio('quality'), bk: $('#bk').checked, grid: $('#grid').checked, burn_captions: $('#burn').checked, sfx: $('#sfx').checked, chrome: $('#chrome').checked,
+    quality: radio('quality'), bk: $('#bk').checked, grid: $('#grid').checked, burn_captions: $('#burn').checked, sfx: $('#sfx').checked, camera: $('#camera').checked, chrome: $('#chrome').checked,
     music: 'none', temperature: +$('#temp').value, cap_usd: +$('#cap').value || 0, instructions: $('#instr').value.trim(),
     code_model: state.m3?.id || null,
   };
@@ -208,7 +208,7 @@ function restoreSettings() {
   if (s.minutes) { $('#minutes').value = s.minutes; $('#minV').textContent = s.minutes; }
   if (s.checks != null) $('#checks').textContent = s.checks;
   if (s.kinds) $$('#kinds input').forEach((i) => { i.checked = s.kinds.includes(i.value); });
-  ['bk', 'grid', 'sfx', 'chrome'].forEach((k) => { if (k in s) $('#' + k).checked = s[k]; }); if ('burn_captions' in s) $('#burn').checked = s.burn_captions;
+  ['bk', 'grid', 'sfx', 'camera', 'chrome'].forEach((k) => { if (k in s) $('#' + k).checked = s[k]; }); if ('burn_captions' in s) $('#burn').checked = s.burn_captions;
   if (s.temperature) { $('#temp').value = s.temperature; $('#tempV').textContent = s.temperature; }
   if (s.cap_usd != null) $('#cap').value = s.cap_usd;
   $('#mp3').hidden = radio('mode') === 'template';
@@ -406,13 +406,20 @@ function wireVideo() {
 }
 
 // ---------- done ----------
+// LLM animation renders: say how many scenes really used the model's code, and why the others fell back to the template
+function llmNote(x) {
+  const r = x.llm; if (x.mode !== 'llm' || !r) return '';
+  if (!r.fallbacks.length) return `<p class="cap"><span class="pill ok">All ${r.animated} scenes animated</span></p>`;
+  return `<div class="fallbacks"><span class="pill warn">Template used in ${r.fallbacks.length} of ${r.animatable} scenes</span>
+    <ul>${r.fallbacks.map((f) => `<li><b>${esc(f.name)}</b> <small>${esc(f.reason)}</small></li>`).join('')}</ul></div>`;
+}
 function doneCard() {
   const ok = V.variants.filter((x) => x.status === 'done');
   return `<section class="card done-card"><h2><span class="n">✓</span><span class="grow">Your video is ready</span><span class="pill ok">${mmss(V.duration_s)}</span></h2>
     <div class="cmp" style="grid-template-columns:repeat(${Math.min(2, ok.length)},1fr)">${ok.map((x) => `<div>
       <a class="figure" href="/studio/watch/${V.id}?mode=${x.mode}" style="display:block"><img src="/studio/media/${V.id}/${x.mode}/poster.jpg" alt="${esc(MODE[x.mode])} poster" style="display:block;width:100%;border-radius:11px;background:var(--paper)"></a>
       <div class="actions"><span class="pill badge">${esc(MODE[x.mode])}</span><a class="btn primary small" href="/studio/watch/${V.id}?mode=${x.mode}">Watch</a>
-      <a class="btn small" href="/studio/media/${V.id}/${x.mode}/video.mp4" download>Download MP4</a><a class="btn small ghost" href="/studio/media/${V.id}/${x.mode}/sheet.jpg" target="_blank" rel="noopener">Contact sheet</a></div></div>`).join('')}</div>
+      <a class="btn small" href="/studio/media/${V.id}/${x.mode}/video.mp4" download>Download MP4</a><a class="btn small ghost" href="/studio/media/${V.id}/${x.mode}/sheet.jpg" target="_blank" rel="noopener">Contact sheet</a></div>${llmNote(x)}</div>`).join('')}</div>
     ${ok.length > 1 ? `<div class="actions"><a class="btn" href="/studio/compare?v=${V.id}">Compare side by side</a></div>` : ''}
     ${V.compare_id ? `<div class="actions"><a class="btn" href="/studio/compare?group=${V.compare_id}">Compare the two models</a></div>` : ''}
     <p class="cap">The watch link is public (anyone with it can watch, no login), so you can share it with students.</p>

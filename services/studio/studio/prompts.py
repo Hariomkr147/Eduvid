@@ -149,7 +149,9 @@ CUSTOM_API = """
 You write the body of a JavaScript function `draw(ctx, t, A)` that draws ONE frame of an educational animation on a
 2D canvas. It is called for every frame with `t` = seconds since the scene started (0 … A.dur). It must be a PURE
 function of t: same t → same picture; no state between calls, no randomness (use A.rand(i) for fixed pseudo-random).
-The engine has already painted the warm paper background and the scene header; draw inside A.box {x, y, w, h}.
+The engine has already painted the paper background and the scene heading at the top. Below the heading you own
+A.stage {x, y, w, h} (full width, down to the bottom of the frame). Keep text and key drawings inside A.box {x, y, w, h}
+(inside the stage, clear of the captions); backgrounds and decoration may fill the whole stage.
 Canvas size A.W × A.H (1920×1080 for 16:9, 1080×1920 for 9:16). Pixel units.
 
 Timing (seconds, scene-relative):  A.dur · A.L(i) start of line i · A.Le(i) end of line i ·
@@ -168,12 +170,35 @@ Drawing helpers (all take an options object o; `progress` 0..1 draws a stroke pa
   A.card(x,y,w,h,o) white rounded card with the soft "ledge" · A.pill(text,x,y,o) rounded tag · A.chip(n,x,y,o) number
   circle · A.bk(x,y,h,pose) Bal Krishna (pose 'calm'|'wave'), x,y = feet centre · A.bubble(text,x,y,o) speech bubble
   A.pop(t, t0) scale 0→1 with a soft spring starting at t0 · A.fade(t, t0, len=.3) alpha 0→1
+  A.grad(x0,y0,x1,y1,stops) linear gradient · A.radial(x,y,r,stops) radial gradient (stops: ['#fff','#9bf'] or
+      [[0,'#fff'],[1,'#9bf']]); use them as `fill`/`color` or ctx.fillStyle to shade solids so they look round.
+  A.bg(fill) paints the whole stage (a colour or a gradient). Call it FIRST if you want a stage background.
+  A.camera(t, [{at, x, y, zoom, len}, …]) moves the camera: from time `at` it glides (len s, default 0.7) until point
+      (x, y) sits at the stage centre, magnified `zoom` (1 = as drawn, max 1.8). Call it after A.bg and BEFORE
+      drawing; draw everything in normal canvas coordinates and the camera frames it. Clipped to the stage.
+      A framing shows only a window of A.stage.w/zoom × A.stage.h/zoom px around (x, y) (moved inward if it would
+      leave the stage). Every label, number and formula that matters at that moment must lie inside that window
+      with 40 px to spare, or it is cut off: put the labels next to the part you zoom on, not at the far edges.
   ctx is a normal CanvasRenderingContext2D for anything else (save/restore around transforms).
-Layout: use the whole A.box (drawings at least half its height, centred); keep 24 px between any two texts,
-  labels and shapes so nothing overlaps; nothing outside A.box.
-Style: calm, bright, child-friendly, never noisy. Off-white paper, ink lines 4-6 px, ONE blue highlight thing at a time,
-  purple for brand only, green = right. Big readable text (≥ 34 px body, ≥ 48 px headings at 1920×1080). Labels and
-  maths only on the drawing (no sentences). Things appear on the word that names them. One moving thing at a time.
+This is the ANIMATED version of the lesson. A separate template version already shows the same scene as white cards,
+  numbered chips, pills and bullet lists on off-white paper with flat outline drawings, and the viewer compares the
+  two. Do NOT rebuild that: no bullet lists, no stacks of cards, no chips or pills, no copy of the template's layout.
+  The scene content below gives the facts, labels and maths to show, not a layout to copy.
+Show the idea instead:
+  - Draw the real thing the narration is about (an ice-cream cone, a tin can, a ladoo, a tent, a clock, a cricket
+    ball, a field, a river) and turn it into the maths: the object becomes its shape, the shape gets its labels.
+  - Make the change visible: things build up piece by piece, rotate, roll, fill with colour or water, unfold into a
+    net, split and recombine, grow along a motion path. Use arrows and moving highlights to lead the eye.
+  - Camera: plan 2-4 framings with A.camera. Start wide on the whole picture; move in (zoom 1.2-1.5) on the part being
+    talked about at the word that names it (at: A.T('word', line) - 0.2); pull back out (zoom 1) for the conclusion.
+    Before you finish, check each framing's window against every text you draw while it is active.
+  - Keep it alive: something always moves gently (a slow turn, a pulse, a drifting light), and 2-3 coordinated motions
+    at the key moment. Smooth easing, nothing jitters or flashes.
+  - Colour and light: give the scene its own mood with A.bg (sky, water, chalkboard green, night blue, warm table).
+    Shade solid objects with A.grad / A.radial, light from the top left. Keep text dark on light areas, white on dark.
+Readable on a phone: text ≥ 40 px, key labels and maths ≥ 56 px (at 1920×1080; the same pixel sizes for 9:16).
+  Labels, numbers and maths only on the drawing, no sentences. Keep 24 px between texts so nothing overlaps. Every fact,
+  number and label must match the scene content and the narration exactly. Things appear on the word that names them.
 Forbidden: while loops, recursion, document, window, fetch, XMLHttpRequest, import, eval, Function, setTimeout,
   setInterval, requestAnimationFrame, globalThis, localStorage. `for` loops must have a small fixed bound (≤ 500).
 """
@@ -221,12 +246,19 @@ def fix_tex_literals(code: str) -> str:
     return _TEX_LIT.sub(fix, code)
 
 
+# comments and '…' / "…" strings: words inside them never run (eval and Function are forbidden), so a comment like
+# "// swept surface while rotating" must not cost a retry. Template literals stay: `${…}` inside them is code.
+_INERT = __import__("re").compile(
+    r"""//[^\n]*|/\*.*?\*/|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*\"""", __import__("re").S)
+
+
 def code_problems(code: str) -> list[str]:
     import re
     anywhere = {"constructor", "__proto__", "prototype"}     # reachable as .x or ['x'] from any object → Function
+    live = _INERT.sub(" ", code)
     out = [f"uses forbidden '{w}'" for w in (*FORBIDDEN, "prototype")
            if (w in code if w in anywhere else
-               re.search(r"(?<![\w.$])" + re.escape(w) + (r"(?![\w$])" if w[-1].isalnum() else ""), code))]
+               re.search(r"(?<![\w.$])" + re.escape(w) + (r"(?![\w$])" if w[-1].isalnum() else ""), live))]
     if len(code) > 30000:
         out.append("code is longer than 30000 characters")
     return out

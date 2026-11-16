@@ -29,10 +29,50 @@ export function compile(code) {
 }
 
 // A: the helper API documented to the model in services/studio/studio/prompts.py (CUSTOM_API). Keep them in sync.
+// gradient stops: ['#fff', '#000'] spread evenly, or [[0, '#fff'], [0.7, '#888'], [1, '#000']]
+function addStops(g, stops) {
+  const list = Array.isArray(stops) && stops.length ? stops.slice(0, 12) : ['#ffffff', '#000000'];
+  list.forEach((s, k) => {
+    const [at, col] = Array.isArray(s) ? s : [list.length > 1 ? k / (list.length - 1) : 0, s];
+    try { g.addColorStop(K.clamp(+at || 0), String(col)); } catch { /* a bad colour string is skipped */ }
+  });
+  return g;
+}
+
 export function makeA(S) {
   const norm = (w) => String(w).toLowerCase().replace(/[^\p{L}\p{M}\p{N}']+/gu, '');
+  // the stage: full width, from just under the scene heading to the bottom of the frame (the LLM scene owns it)
+  const top = Math.max(0, S.box.y - 20), stage = { x: 0, y: top, w: S.W, h: S.H - top };
+  const scx = stage.x + stage.w / 2, scy = stage.y + stage.h / 2;
+  // a framing: zoom 1-1.8, centre kept so the camera window (stage.w/zoom × stage.h/zoom) never leaves the stage
+  const frame = (k) => {
+    const z = K.clamp(Number.isFinite(+k.zoom) ? +k.zoom : 1, 1, 1.8), hw = stage.w / (2 * z), hh = stage.h / (2 * z);
+    return { x: K.clamp(Number.isFinite(+k.x) ? +k.x : scx, stage.x + hw, stage.x + stage.w - hw),
+      y: K.clamp(Number.isFinite(+k.y) ? +k.y : scy, stage.y + hh, stage.y + stage.h - hh), z };
+  };
   return {
-    W: S.W, H: S.H, box: S.box, dur: S.dur, c: K.C,
+    W: S.W, H: S.H, box: S.box, stage, dur: S.dur, c: K.C,
+    // camera: keys [{at, x, y, zoom, len?}] = "at time `at`, glide (len s, default .7) until point (x, y) is at the
+    // stage centre, magnified `zoom`". Clips to the stage so the heading never moves. Call it before drawing.
+    camera: (t, keys) => {
+      const ks = (Array.isArray(keys) ? keys : []).filter((k) => k && typeof k === 'object').slice(0, 16)
+        .map((k) => ({ ...k, at: Number.isFinite(+k.at) ? +k.at : 0 })).sort((a, b) => a.at - b.at);
+      let cur = { x: scx, y: scy, z: 1 };
+      if (ks.length) {
+        let j = 0; while (j + 1 < ks.length && ks[j + 1].at <= t) j++;
+        const to = frame(ks[j]), from = j > 0 ? frame(ks[j - 1]) : to;
+        const e = j > 0 ? K.eio(K.prog(t, ks[j].at, Number.isFinite(+ks[j].len) ? +ks[j].len : 0.7)) : 1;
+        cur = { x: K.lerp(from.x, to.x, e), y: K.lerp(from.y, to.y, e), z: K.lerp(from.z, to.z, e) };
+      }
+      const c = K.ctx;
+      c.beginPath(); c.rect(stage.x, stage.y, stage.w, stage.h); c.clip();
+      c.translate(scx, scy); c.scale(cur.z, cur.z); c.translate(-cur.x, -cur.y);
+      return { x: cur.x, y: cur.y, zoom: cur.z };
+    },
+    // paint the stage (a colour, or a gradient from A.grad / A.radial); call it before A.camera
+    bg: (fill) => { const c = K.ctx; c.save(); c.fillStyle = fill || K.C.paper; c.fillRect(stage.x, stage.y, stage.w, stage.h); c.restore(); },
+    grad: (x0, y0, x1, y1, stops) => addStops(K.ctx.createLinearGradient(+x0 || 0, +y0 || 0, +x1 || 0, +y1 || 0), stops),
+    radial: (x, y, r, stops) => addStops(K.ctx.createRadialGradient(+x || 0, +y || 0, 0, +x || 0, +y || 0, Math.max(1, +r || 1)), stops),
     L: (i) => S.L(i), Le: (i) => S.Le(i),
     T: (word, i) => {
       const n = norm(word);

@@ -7,6 +7,7 @@ lives in studio_videos, so a restart picks up where it left off.
 import io
 import json
 import logging
+import re
 import subprocess
 import tarfile
 import tempfile
@@ -225,27 +226,70 @@ def write_code(vid: str) -> None:
     done, failed = 0, []
     try:
         with ThreadPoolExecutor(max_workers=4) as ex:
-            futs = [ex.submit(_one_scene, vid, model, script, i, st.get("aspect", "16:9"), st) for i in targets]
-            for f in futs:
+            futs = {i: ex.submit(_one_scene, vid, model, script, i, st.get("aspect", "16:9"), st) for i in targets}
+            for i, f in futs.items():
                 try:
-                    i, code, err = f.result()
+                    _, code, err = f.result()
                 except CapReached:
                     raise
                 except Exception as e:                       # one scene's failure falls back to its template
-                    failed.append(str(e)[:200])
-                    continue
+                    code, err = None, f"{type(e).__name__}: {e}"
                 if code:
                     script["scenes"][i]["custom_code"] = code
                     done += 1
                 else:
-                    failed.append(f"scene {i + 1}: {err}")
+                    failed.append({"id": script["scenes"][i]["id"], "reason": f"no usable code: {err}"[:300]})
         store.update(vid, script=script)
-        msg = f"{done}/{len(targets)} scenes animated" + (f"; template used for {len(failed)}" if failed else "")
+        store.merge_stage(vid, code_failed=failed)
+        msg = f"{done}/{len(targets)} scenes animated"
+        if failed:
+            msg += "; template used for " + ", ".join(_scene_name(script, f["id"]) for f in failed)
         store.event(vid, "code", "done", msg)
     except Exception as e:
         log.exception("code %s", vid)
         store.event(vid, "code", "failed", f"{e} (templates will be used)")
     store.merge_stage(vid, code_done=True)
+
+
+def _scene_name(script: dict, sid: str) -> str:
+    sc = next((s for s in script["scenes"] if s["id"] == sid), None)
+    title = (sc or {}).get("title") or {}
+    name = (title.get("en") or title.get("hi")) if isinstance(title, dict) else str(title)
+    return f"{sid} “{name}”" if name else sid
+
+
+# one line per scene in the render's check.txt, written by capture.mjs from OP.shots():
+#   "s3      32.85 →  48.27  (15.42 s)  figure · TEMPLATE FALLBACK: <error>"   or  "… board · llm animation"
+_SHOT = re.compile(r"^(\S+)\s+[\d.]+\s+→\s+[\d.]+\s+\(\s*[\d.]+ s\)\s+(\w+)(?:\s+·\s+(.*))?$")
+
+
+def llm_report(check_txt: str, script: dict, code_failed: list[dict] | None = None) -> dict:
+    """Which scenes of an LLM-animation render really used LLM code, and why the others fell back to the template.
+    A scene is a fallback when the studio got no usable code for it (code_failed) or the engine rejected the code
+    at boot (TEMPLATE FALLBACK in check.txt). Check scenes are always templates (the player pauses on them)."""
+    ids = {s["id"] for s in script["scenes"]}
+    why = {f["id"]: f["reason"] for f in (code_failed or [])}
+    animatable, animated, fallbacks = 0, 0, []
+    for raw in check_txt.splitlines():
+        m = _SHOT.match(raw.strip())
+        if not m or m.group(1) not in ids or m.group(2) == "check":
+            continue
+        sid, note = m.group(1), m.group(3) or ""
+        animatable += 1
+        if note.startswith("llm animation"):
+            animated += 1
+            continue
+        reason = (note.split("TEMPLATE FALLBACK:", 1)[1].strip() if "TEMPLATE FALLBACK:" in note
+                  else why.get(sid, "no animation code was written for this scene"))
+        fallbacks.append({"id": sid, "name": _scene_name(script, sid), "reason": reason[:300]})
+    return {"animatable": animatable, "animated": animated, "fallbacks": fallbacks}
+
+
+def report_message(rep: dict) -> str:
+    msg = f"LLM animation: {rep['animated']} of {rep['animatable']} scenes animated"
+    if rep["fallbacks"]:
+        msg += "; template used for " + "; ".join(f"{f['name']} ({f['reason'][:120]})" for f in rep["fallbacks"])
+    return msg
 
 
 # ---------- 4. project + render ----------
@@ -257,7 +301,8 @@ def build_project(vid: str, mode: str) -> bytes:
     lesson = {"script": script, "mode": mode, "aspect": st.get("aspect", "16:9"),
               "captions": bool(st.get("burn_captions", False)), "grid": bool(st.get("grid", True)),
               "bk": bool(st.get("bk", True)), "pace": st.get("pace", "normal"),
-              "sfx": bool(st.get("sfx", True)), "chrome": bool(st.get("chrome", False))}
+              "sfx": bool(st.get("sfx", True)), "chrome": bool(st.get("chrome", False)),
+              "camera": bool(st.get("camera", True))}
     vs = json.loads(storage.get_bytes(prefix(vid) + "voice/script.json"))
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as t:
@@ -452,6 +497,13 @@ def tick() -> None:
                         var.update(status="rendered", video_key=r.get("video_key"), sheet_key=r.get("sheet_key"),
                                    gpu_seconds=r.get("gpu_seconds"))
                         store.event(vid, "render", "info", f"{var['mode']} rendered in {r.get('gpu_seconds', 0):.0f} s")
+                        if var["mode"] == "llm":                 # never let a template fallback pass silently
+                            try:
+                                txt = storage.get_bytes(prefix(vid) + "llm/check.txt").decode("utf-8", "replace")
+                                var["llm"] = llm_report(txt, v["script"], sg.get("code_failed"))
+                                store.event(vid, "render", "info", report_message(var["llm"]))
+                            except Exception as e:               # the report is a nicety; the video is fine
+                                log.warning("llm report %s: %s", vid, e)
                         changed = True
                     elif s in ("failed", "missing"):
                         var.update(status="failed", error=(j.get("error") or s)[:1000], log_key=j.get("log_key"))
