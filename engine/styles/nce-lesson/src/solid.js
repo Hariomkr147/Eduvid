@@ -252,7 +252,7 @@ function dimLabel(so, d, key) {
 
 function drawDims(W, d, so, P, T, a0) {
   const segs = dimSegments(d), c = K.ctx, ctr = P([0, d.H / 2, 0]);
-  const want = {};
+  const want = {}, placed = [];
   T.shows.forEach((s) => { (s.dims || Object.keys(segs)).forEach((k) => { want[k] = Math.max(want[k] || 0, s.a); }); });
   for (const [key, a1] of Object.entries(want)) {
     const seg = segs[key], a = a1 * a0; if (!seg || a <= 0.01) continue;
@@ -265,7 +265,12 @@ function drawDims(W, d, so, P, T, a0) {
     // labels sit outside the solid, away from its centre; the height label sits just right of the axis
     const txt = dimLabel(so, d, key), size = 40, w = K.measure(txt, size, 700) + 36;
     const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = mx - ctr[0], dy = my - ctr[1], n = Math.hypot(dx, dy) || 1;
-    const lx = inner ? mx + 22 + w / 2 : mx + (dx / n) * (30 + w / 2), ly = inner ? my : my + (dy / n) * 46;
+    const lx = inner ? mx + 22 + w / 2 : mx + (dx / n) * (30 + w / 2);
+    let ly = inner ? my : my + (dy / n) * 46;
+    // labels never sit on each other: move down past any label already placed
+    const hits = (y) => placed.some((b) => Math.abs(b.x - lx) < (b.w + w) / 2 + 6 && Math.abs(b.y - y) < 70);
+    for (let k = 0; k < 6 && hits(ly); k++) ly += 72;
+    placed.push({ x: lx, y: ly, w });
     c.save(); c.globalAlpha = a; K.rr(lx - w / 2, ly - 34, w, 64, 32); c.fillStyle = K.C.surface; c.fill(); c.lineWidth = 3; c.strokeStyle = K.C.primary; c.stroke(); c.restore();
     K.text(txt, lx, ly + 13, { size, weight: 700, color: K.C.accentInk, align: 'center', alpha: a });
   }
