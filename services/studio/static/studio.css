@@ -160,6 +160,7 @@ li.skipped{color:var(--faint)} li.skipped .ico{border-style:dashed}
 .scene .preview .opt.ok i{background:var(--good);color:#fff}
 .sticky-bar{position:sticky;bottom:0;z-index:10;background:linear-gradient(transparent,var(--bg) 30%);padding:24px 0 12px;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 /* library */
+.lib.ready .vcard{animation:none}
 .lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
 .vcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 3px 0 var(--line-2);display:flex;flex-direction:column;animation:screenIn .28s ease both}
 .vcard .thumb{aspect-ratio:16/9;background:var(--frame);display:grid;place-items:center;position:relative;overflow:hidden}

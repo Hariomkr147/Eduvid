@@ -275,10 +275,19 @@ function stepState(step) {
   return [st, (st === 'done' ? evs.filter((e) => e.status === 'done').pop() : last).message || first?.message || ''];
 }
 
+// The page is polled every 2.5 s while a video builds. Replacing the cards on every poll replayed their fade-in
+// (and reloaded Bal Krishna's image), so the page flickered. Now the card shells stay in place and each part is
+// written only when its HTML actually changed; the script editor is never redrawn under the teacher's cursor.
+const shown = { head: null, body: null, facts: null, tip: null, cost: null };
+function setIfChanged(el, key, html) {
+  if (!el || shown[key] === html) return false;
+  el.innerHTML = html; shown[key] = html; return true;
+}
 function renderVideo(changed) {
   const v = V, s = v.settings || {};
-  document.title = (v.title || 'Video') + ' · EduVid Studio';
-  const head = `<section class="card"><h2><span class="grow">${esc(v.title || v.target?.label || 'Untitled')}</span>${statusPill(v.status)}</h2>
+  const title = (v.title || 'Video') + ' · EduVid Studio';
+  if (document.title !== title) document.title = title;
+  const head = `<h2><span class="grow">${esc(v.title || v.target?.label || 'Untitled')}</span>${statusPill(v.status)}</h2>
     <dl class="facts"><dt>Teaches</dt><dd>${esc((v.target?.units || []).join(', ') || v.target?.label || '')}</dd>
     <dt>Model</dt><dd>${esc(v.model)}</dd><dt>Visuals</dt><dd>${esc(s.mode === 'both' ? 'Templates + LLM animation' : MODE[s.mode] || s.mode)}</dd>
     <dt>Format</dt><dd>${esc(`${s.aspect} · ${s.language} · ${s.voice}`)}</dd><dt>AI cost so far</dt><dd>${money(v.cost_usd)} <span class="cap">(${inr(v.cost_usd)})</span></dd></dl>
@@ -287,17 +296,29 @@ function renderVideo(changed) {
     <div class="actions">${v.status === 'failed' ? '<button class="btn primary" id="retry" type="button">Try again</button>' : ''}
       <button class="btn small" id="log" type="button">Activity log</button>
       ${v.variants?.length ? v.variants.map((x) => `<button class="btn small" type="button" data-rlog="${x.mode}">Render log: ${esc(x.mode)}</button>`).join('') : ''}
-      <a class="btn small ghost" href="/studio/">+ New video</a></div></section>`;
+      <a class="btn small ghost" href="/studio/">+ New video</a></div>`;
   let body = '';
   if (v.status === 'scripting') body = `<section class="card"><div class="bk-row"><img src="/studio/static/nce/assets/bk-calm.png" alt=""><div class="bubble">I'm reading the NCERT pages and writing your script with ${esc(v.model)}. This usually takes 1–3 minutes.</div></div></section>`;
   if (v.status === 'review' && v.script) body = reviewCard();
   if (v.status === 'done') body = doneCard();
-  if (changed || !$('#vhead') || v.status !== 'review') $('#video').innerHTML = `<div id="vhead">${head}</div><div id="vbody">${body}</div>`;
-  else $('#vhead').innerHTML = head;
-  wireVideo();
-  tip({ scripting: 'Writing your script…', review: 'Read it through. Red lines can’t be spoken yet: fix them, then Build.', voicing: 'Recording each sentence, and checking it with speech recognition.', timing: 'Matching every word to the audio.', coding: 'The model is drawing each scene.', rendering: 'Rendering frames on the GPU.', publishing: 'Almost there!', done: 'Your video is ready. Shabash!', failed: 'Something went wrong. Check the log, then try again.' }[v.status] || '');
-  $('#costLbl').textContent = 'AI cost so far'; $('#railCost').textContent = money(v.cost_usd); $('#railInr').textContent = inr(v.cost_usd);
-  $('#facts').innerHTML = [['Status', (v.status)], ['Scenes', v.script ? v.script.scenes.length : '—'], ['Length', v.duration_s ? mmss(v.duration_s) : '—']].map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join('');
+  if (!$('#vhead')) {                       // first render: build the two shells once
+    $('#video').innerHTML = '<section class="card" id="vhead"></section><div id="vbody"></div>';
+    shown.head = shown.body = null;
+  }
+  let touched = setIfChanged($('#vhead'), 'head', head);
+  // the review editor holds unsaved edits: only rebuild it when the video's status changed
+  if (v.status !== 'review' || changed || shown.body === null || !shown.body.includes('id="saveBtn"')) {
+    touched = setIfChanged($('#vbody'), 'body', body) || touched;
+  }
+  if (touched) wireVideo();
+  const tipText = { scripting: 'Writing your script…', review: 'Read it through. Red lines can’t be spoken yet: fix them, then Build.', voicing: 'Recording each sentence, and checking it with speech recognition.', timing: 'Matching every word to the audio.', coding: 'The model is drawing each scene.', rendering: 'Rendering frames on the GPU.', publishing: 'Almost there!', done: 'Your video is ready. Shabash!', failed: 'Something went wrong. Check the log, then try again.' }[v.status] || '';
+  if (shown.tip !== tipText) { tip(tipText); shown.tip = tipText; }
+  const cost = `${money(v.cost_usd)}|${inr(v.cost_usd)}`;
+  if (shown.cost !== cost) {
+    $('#costLbl').textContent = 'AI cost so far'; $('#railCost').textContent = money(v.cost_usd); $('#railInr').textContent = inr(v.cost_usd);
+    shown.cost = cost;
+  }
+  setIfChanged($('#facts'), 'facts', [['Status', (v.status)], ['Scenes', v.script ? v.script.scenes.length : '—'], ['Length', v.duration_s ? mmss(v.duration_s) : '—']].map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join(''));
 }
 
 // ---------- review ----------
@@ -349,7 +370,7 @@ async function saveScript(quiet) {
   readEdits();
   const r = await api(`/videos/${V.id}/script`, { method: 'PUT', body: { script: V.script } });
   V.script = r.script; speak = r.speakable; dirty = false;
-  if (!quiet) { $('#vbody').innerHTML = reviewCard(); wireVideo(); toast(speak.length ? `Saved. ${speak.length} line(s) still need fixing.` : 'Saved.'); }
+  if (!quiet) { shown.body = null; setIfChanged($('#vbody'), 'body', reviewCard()); wireVideo(); toast(speak.length ? `Saved. ${speak.length} line(s) still need fixing.` : 'Saved.'); }
   return r;
 }
 function wireVideo() {
@@ -369,7 +390,7 @@ function wireVideo() {
     if (b.dataset.act === 'regen') {
       const note = prompt('What should change in this scene?', 'Make it clearer, with a simpler everyday example'); if (note == null) return;
       b.disabled = true; b.textContent = 'Rewriting…';
-      try { if (dirty) await saveScript(true); const r = await api(`/videos/${V.id}/scenes/${i}/regenerate`, { body: { note } }); V.script = r.script; speak = r.speakable; $('#vbody').innerHTML = reviewCard(); wireVideo(); toast(`Scene ${i + 1} rewritten.`); }
+      try { if (dirty) await saveScript(true); const r = await api(`/videos/${V.id}/scenes/${i}/regenerate`, { body: { note } }); V.script = r.script; speak = r.speakable; shown.body = null; setIfChanged($('#vbody'), 'body', reviewCard()); wireVideo(); toast(`Scene ${i + 1} rewritten.`); }
       catch (err) { toast(err.message); b.disabled = false; b.textContent = 'Rewrite…'; }
     }
   };
@@ -377,7 +398,7 @@ function wireVideo() {
     const b = $('#build'); b.disabled = true; b.textContent = 'Starting…';
     try {
       await saveScript(true);
-      if (speak.length) { $('#vbody').innerHTML = reviewCard(); wireVideo(); return toast('Fix the red lines first.'); }
+      if (speak.length) { shown.body = null; setIfChanged($('#vbody'), 'body', reviewCard()); wireVideo(); return toast('Fix the red lines first.'); }
       await api(`/videos/${V.id}/approve`, { body: {} });
       V = await api('/videos/' + V.id); renderVideo(true); poll();
     } catch (e) { toast(e.message); b.disabled = false; b.textContent = 'Build the video'; }

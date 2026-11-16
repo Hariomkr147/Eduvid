@@ -4,9 +4,11 @@ document.querySelector('#page').before(header('library'));
 let all = [];
 const WORK = ['scripting', 'review', 'voicing', 'timing', 'coding', 'rendering', 'publishing'];
 
+let lastData = '', lastHtml = '';
 async function load() {
-  all = await api('/videos');
-  render();
+  const data = await api('/videos');
+  const key = JSON.stringify(data);
+  if (key !== lastData) { all = data; lastData = key; render(); }   // nothing changed: leave the cards alone
   if (all.some((v) => WORK.includes(v.status) && v.status !== 'review')) setTimeout(load, 5000);
 }
 function render() {
@@ -17,7 +19,7 @@ function render() {
     $('#lib').innerHTML = `<div class="empty" style="grid-column:1/-1"><img src="/studio/static/nce/assets/bk-calm.png" alt=""><p>${all.length ? 'No video matches.' : 'No videos yet. Make your first one!'}</p><a class="btn primary" href="/studio/">+ New video</a></div>`;
     return;
   }
-  $('#lib').innerHTML = list.map((v) => {
+  const html = list.map((v) => {
     const ready = (v.variants || []).filter((x) => x.status === 'done'), first = ready[0];
     const thumb = first ? `<img src="/studio/media/${v.id}/${first.mode}/poster.jpg" alt="" loading="lazy">` : `<span class="ph">${esc((v.settings?.aspect) || '16:9')}</span>`;
     const pair = v.compare_id ? all.filter((x) => x.compare_id === v.compare_id) : [];
@@ -31,6 +33,10 @@ function render() {
         ${ready.length > 1 ? `<a class="btn small" href="/studio/compare?v=${v.id}">Compare modes</a>` : ''}${pair.length > 1 ? `<a class="btn small" href="/studio/compare?group=${v.compare_id}">Compare models</a>` : ''}
         <button class="btn small ghost danger" type="button" data-del="${v.id}">Delete</button></div></article>`;
   }).join('');
+  if (html === lastHtml) return;
+  lastHtml = html;
+  $('#lib').innerHTML = html;
+  requestAnimationFrame(() => $('#lib').classList.add('ready'));   // fade cards in once, not on every refresh
 }
 $('#q').oninput = render;
 $$('input[name=f]').forEach((r) => r.onchange = render);
