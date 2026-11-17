@@ -72,7 +72,7 @@ function timeline(S) {
   const paints = moves.filter((m) => m.do === 'paint').map((m) => ({ part: m.part || 'curved', color: K.NAMED[m.color] || K.C.goldDeep, a: K.eo(K.prog(S.t, m.t0, m.len)) }));
   const shows = moves.filter((m) => m.do === 'show').map((m) => ({ dims: m.dims && m.dims.length ? m.dims : null, a: K.eo(K.prog(S.t, m.t0, m.len)) }));
   return { moves, orbit, paints, shows,
-    rev: has('revolve') ? k('revolve') : 1, revStarted: has('revolve') ? S.t >= Math.min(...moves.filter((m) => m.do === 'revolve').map((m) => m.t0)) : true,
+    rev: has('revolve') ? k('revolve') : 1, revT0: has('revolve') ? Math.min(...moves.filter((m) => m.do === 'revolve').map((m) => m.t0)) : 0, revStarted: has('revolve') ? S.t >= Math.min(...moves.filter((m) => m.do === 'revolve').map((m) => m.t0)) : true,
     un: k('unroll'), fill: k('fill') * K.clamp(fillM ? num(fillM.level, 1) : 1, 0.02, 1), filling: has('fill') && k('fill') > 0,
     cut: k('cut'), cutAt: K.clamp(cutM ? (Number.isFinite(+cutM.at) ? +cutM.at : 0.5) : 0.5, 0.1, 0.9), cutAxis: cutM && cutM.axis === 'v' ? 'v' : 'h' };
 }
@@ -319,6 +319,10 @@ export function drawSolid(S, area) {
   let yaw = -0.55 + 0.05 * t + T.orbit;
   yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
   if (T.rev < 1) yaw = K.lerp(0, yaw, T.revStarted ? K.eio(K.prog(T.rev, 0, 1)) : 0);
+  // waiting for a revolve: the profile rocks gently about its axis (never a still picture while the narrator gets
+  // to "rotate"); it settles face-on just before the revolve, which starts from there
+  const wait = T.revStarted ? 0 : K.clamp((T.revT0 - t) / 0.8);
+  if (wait > 0) yaw = 0.32 * Math.sin(1.1 * Math.max(0, t - 0.6)) * wait * K.eo(K.prog(t, 0.6, 1));
   yaw = K.lerp(yaw, 0, T.un);
   W.dyn.rotation.y = yaw;
   // pieces: A is the whole solid, or the bottom / left piece of a cut; B is the top / right piece.
@@ -368,7 +372,9 @@ export function drawSolid(S, area) {
 
   const el = K.lerp(0.36, 0.08, T.un), box = contentBox(d, T), fov = 30 * Math.PI / 180, aspect = w / h;
   const fitV = (box.h / 2) / Math.tan(fov / 2), fitH = (box.w / 2) / (Math.tan(fov / 2) * aspect);
-  const dist = Math.max(fitV, fitH) * 1.32 + Math.max(d.r, d.B || 0) + 0.4;
+  // and the camera eases in slowly while it waits
+  const push = T.revStarted ? 1 : K.lerp(1.1, 1, K.eio(K.prog(t, 0, Math.max(0.5, T.revT0))));
+  const dist = (Math.max(fitV, fitH) * 1.32 + Math.max(d.r, d.B || 0) + 0.4) * push;
   W.cam.aspect = aspect; W.cam.fov = 30; W.cam.updateProjectionMatrix();
   W.cam.position.set(box.cx, box.cy + Math.sin(el) * dist, Math.cos(el) * dist); W.cam.lookAt(box.cx, box.cy, 0);
   W.ground.material.opacity = 0.14 * (1 - T.un);
@@ -395,6 +401,15 @@ export function drawSolid(S, area) {
 
   const P = projector(W, area), intact = (1 - T.un) * (1 - T.cut) * K.prog(T.rev, 0.9, 0.1);
   drawRims(W, d, P, appear * intact * (filling ? 0.6 : 1));
+  // the axis it will spin about glows while it waits, and fades as the revolve begins
+  if (T.rev < 1 && d.shape !== 'cuboid') {
+    const a = appear * K.prog(t, 0.8, 0.6) * (1 - K.prog(t, T.revT0, 0.6)) * (0.6 + 0.4 * Math.sin(3 * t));
+    if (a > 0.01) {
+      const [x1, y1] = P([0, -0.12, 0]), [x2, y2] = P([0, d.H + 0.18, 0]);
+      c.save(); c.globalAlpha *= a; c.strokeStyle = K.C.flame; c.lineWidth = 4; c.lineCap = 'round'; c.setLineDash([14, 12]);
+      c.lineDashOffset = -t * 30; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); c.restore();
+    }
+  }
   drawDims(W, d, so, P, T, appear * (1 - T.un) * (1 - T.cut));
   return true;
 }
