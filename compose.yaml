@@ -8,9 +8,17 @@ volumes:
   caddy_data:
   caddy_config:
 
-x-env: &env
-  env_file: .env
+# Each service gets only the variables it reads (values come from .env by interpolation). Nothing but `tools`
+# loads the whole .env: render workers run LLM-written scene code in Chrome and must never see API keys or passwords.
+x-net: &net
   networks: [eduvid]
+
+x-db-s3: &db-s3
+  DATABASE_URL: ${DATABASE_URL}
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+  S3_BUCKET: ${S3_BUCKET:-eduvid}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  S3_SECRET_KEY: ${S3_SECRET_KEY}
 
 # GPU engine template: own container, one GPU via device_ids, model cache on the data disk.
 x-engine: &engine
@@ -70,9 +78,9 @@ services:
     build: {context: ., dockerfile: engines/tts-parler/Dockerfile}
     image: eduvid/tts-parler:dev
 
+  # The studio's default voice (indicf5:ref-female): production, not a bench profile. Shares GPU 3 with the bench set.
   tts-indicf5:
     <<: [*engine, *gpu3]
-    profiles: [bench]
     build: {context: ., dockerfile: engines/tts-indicf5/Dockerfile}
     image: eduvid/tts-indicf5:dev
 
@@ -84,7 +92,9 @@ services:
 
   caddy:
     image: caddy:2.8
-    <<: *env
+    <<: *net
+    environment:
+      DOMAIN: ${DOMAIN:-}
     restart: unless-stopped
     ports:
       - "443:443"
@@ -96,7 +106,11 @@ services:
 
   postgres:
     image: postgres:16
-    <<: *env
+    <<: *net
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     restart: unless-stopped
     shm_size: 1gb
     volumes:
@@ -110,9 +124,9 @@ services:
   minio:
     # MinIO RELEASE.2024-11-07 (upstream stopped publishing public images/binaries; this is Bitnami's frozen build).
     image: bitnamilegacy/minio:2024.11.7
-    <<: *env
+    <<: *net
     restart: unless-stopped
-    user: "1001:1001"
+    user: "1001:0"          # image default: its writable dirs (tmp, log, /.mc) are group-root 775
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
@@ -128,7 +142,11 @@ services:
   # One-shot: create the bucket (idempotent).
   minio-init:
     image: bitnamilegacy/minio-client:2024.11.17
-    <<: *env
+    <<: *net
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET:-eduvid}
     depends_on:
       minio: {condition: service_healthy}
     restart: "no"
@@ -140,7 +158,14 @@ services:
   # OpenAI-compatible speech gateway (CPU only). Engines are reached via ENGINE_*_URL.
   speech-api:
     build: {context: ., dockerfile: services/speech-api/Dockerfile}
-    <<: *env
+    <<: *net
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      ENGINE_OMNIVOICE_URL: ${ENGINE_OMNIVOICE_URL:-http://tts-omnivoice:8000}
+      ENGINE_KOKORO_URL: ${ENGINE_KOKORO_URL:-http://tts-kokoro:8000}
+      ENGINE_ASR_URL: ${ENGINE_ASR_URL:-http://asr-whisperx:8000}
+      ENGINE_INDICF5_URL: ${ENGINE_INDICF5_URL:-http://tts-indicf5:8000}
+      SPEECH_API_DOCS: ${SPEECH_API_DOCS:-0}
     restart: unless-stopped
     depends_on:
       postgres: {condition: service_healthy}
@@ -155,7 +180,15 @@ services:
   studio:
     build: {context: ., dockerfile: services/studio/Dockerfile}
     image: eduvid/studio:dev
-    <<: *env
+    <<: *net
+    environment:
+      <<: *db-s3
+      SPEECH_API_URL: ${SPEECH_API_URL:-http://speech-api:8000}
+      PIPELINE_API_KEY: ${PIPELINE_API_KEY}
+      NCERT_DATABASE_URL: ${NCERT_DATABASE_URL:-}
+      STUDIO_PASSWORD: ${STUDIO_PASSWORD:-}
+      STUDIO_SECRET: ${STUDIO_SECRET:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     restart: unless-stopped
     depends_on:
       postgres: {condition: service_healthy}
@@ -170,7 +203,11 @@ services:
   # voice + words jobs (CPU). Calls the gateway with PIPELINE_API_KEY from .env.
   voice-worker:
     build: {context: ., dockerfile: services/voice-worker/Dockerfile}
-    <<: *env
+    <<: *net
+    environment:
+      <<: *db-s3
+      SPEECH_API_URL: ${SPEECH_API_URL:-http://speech-api:8000}
+      PIPELINE_API_KEY: ${PIPELINE_API_KEY}
     restart: unless-stopped
     depends_on:
       postgres: {condition: service_healthy}
@@ -181,11 +218,15 @@ services:
   render-worker-1: &render
     build: {context: ., dockerfile: services/render-worker/Dockerfile}
     image: eduvid/render-worker:dev
-    <<: *env
+    <<: *net
     restart: unless-stopped
     init: true            # reap Chrome/ffmpeg children that outlive a step
     shm_size: 8gb
+    # Docker's default seccomp profile + clone/unshare/setns, so the non-root Chrome can build its namespace sandbox
+    security_opt:
+      - seccomp=./infra/seccomp/chrome.json
     environment:
+      <<: *db-s3
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics,video
       GPU_INDEX: "1"
     volumes:
@@ -201,6 +242,7 @@ services:
   render-worker-2:
     <<: *render
     environment:
+      <<: *db-s3
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics,video
       GPU_INDEX: "2"
     deploy:
@@ -211,7 +253,8 @@ services:
   # One-off runner for tests, migrations and admin scripts: `make test`, `make migrate`.
   tools:
     build: {context: ., dockerfile: infra/tools/Dockerfile}
-    <<: *env
+    env_file: .env        # one-off admin runner (tests, migrations, keys): the only service that loads all of .env
+    <<: *net
     profiles: [tools]
     depends_on:
       postgres: {condition: service_healthy}

@@ -114,7 +114,7 @@ class Solid(BaseModel):
     r: float = Field(default=0, ge=0)
     r2: float = Field(default=0, ge=0)
     h: float = Field(default=0, ge=0)
-    l: float = Field(default=0, ge=0)
+    l: float = Field(default=0, ge=0)  # noqa: E741  (cuboid length: a key of the script JSON)
     b: float = Field(default=0, ge=0)
     unit: str = Field(default="cm", max_length=8)
     color: Literal["ink", "primary", "start", "good", "flame", "gold", "muted"] = "primary"

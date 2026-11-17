@@ -11,7 +11,11 @@ _models: tuple[float, list[dict]] | None = None
 
 
 class LLMError(RuntimeError):
-    pass
+    """`cost` is what the failed call still spent (paid empty replies, a reply that was not JSON)."""
+
+    def __init__(self, msg: str, cost: float = 0.0):
+        super().__init__(msg)
+        self.cost = cost
 
 
 def key() -> str:
@@ -93,6 +97,7 @@ def chat(model: str, messages: list[dict], *, temperature: float = 0.4, max_toke
         body["response_format"] = {"type": "json_object"}
     headers = {"Authorization": f"Bearer {key()}", "X-Title": "EduVid Studio"}
     last = None
+    spent = 0.0                                    # empty replies are billed too: count them
     for attempt in range(3):
         try:
             r = httpx.post(f"{BASE}/chat/completions", json=body, headers=headers, timeout=timeout)
@@ -109,23 +114,24 @@ def chat(model: str, messages: list[dict], *, temperature: float = 0.4, max_toke
             continue
         if r.status_code == 402:
             raise LLMError("OpenRouter credit is used up for this model (HTTP 402). Add credits at "
-                           "https://openrouter.ai/settings/credits, or pick a cheaper or free model.")
+                           "https://openrouter.ai/settings/credits, or pick a cheaper or free model.", spent)
         if r.status_code >= 400:
-            raise LLMError(f"OpenRouter {r.status_code}: {r.text[:500]}")
+            raise LLMError(f"OpenRouter {r.status_code}: {r.text[:500]}", spent)
         data = r.json()
         if data.get("error"):
-            raise LLMError(f"OpenRouter error: {str(data['error'])[:500]}")
+            raise LLMError(f"OpenRouter error: {str(data['error'])[:500]}", spent)
         choice = (data.get("choices") or [{}])[0]
         text = ((choice.get("message") or {}).get("content")) or ""
         usage = data.get("usage") or {}
         cost = usage.get("cost")
         if cost is None:
             cost = estimate_usd(model, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)) or 0.0
+        spent += float(cost)
         if not text.strip():
             last = f"empty reply (finish_reason={choice.get('finish_reason')})"
             continue
-        return text, float(cost), usage
-    raise LLMError(f"OpenRouter failed after retries: {last}")
+        return text, spent, usage
+    raise LLMError(f"OpenRouter failed after retries: {last}", spent)
 
 
 def chat_json(model: str, messages: list[dict], **kw):
@@ -137,5 +143,11 @@ def chat_json(model: str, messages: list[dict], **kw):
         fix = messages + [{"role": "assistant", "content": text[:20000]},
                           {"role": "user", "content": f"That was not valid JSON ({e}). Reply with the complete JSON "
                                                       "object only, no prose, no code fences."}]
-        text2, cost2, _ = chat(model, fix, **kw)
-        return _extract_json(text2), cost + cost2
+        try:
+            text2, cost2, _ = chat(model, fix, **kw)
+        except LLMError as e2:
+            raise LLMError(str(e2), cost + e2.cost) from e2
+        try:
+            return _extract_json(text2), cost + cost2
+        except ValueError as e2:
+            raise LLMError(f"the model did not reply with valid JSON, even when asked again ({e2})", cost + cost2)

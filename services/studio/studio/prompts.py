@@ -104,7 +104,8 @@ def script_prompt(units: list[dict], pasted: str, settings: dict, glossary: list
     n_scenes = scene_target(minutes)
     plan = [k for k in ("title", "concept", "solid", "board", "example", "check", "concept", "board", "example",
                         "check", "figure", "concept", "example", "check", "summary") if k in kinds]
-    L = lambda: [{"say": "…", "caps": "…", "en": "…"}, {"say": "…", "caps": "…", "en": "…"}]
+    def L():
+        return [{"say": "…", "caps": "…", "en": "…"}, {"say": "…", "caps": "…", "en": "…"}]
     schema = {
         "title": {"en": "…", "hi": "…"}, "language": lang, "screen_lang": screen,
         "scenes": [

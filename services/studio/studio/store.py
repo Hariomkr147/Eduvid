@@ -54,6 +54,22 @@ def add_cost(vid: str, usd: float) -> float:
     return float(r[0]) if r else 0.0
 
 
+def cost(vid: str) -> float:
+    with pool().connection() as conn:
+        r = conn.execute("SELECT cost_usd FROM studio_videos WHERE id = %s", (vid,)).fetchone()
+    return float(r[0]) if r else 0.0
+
+
+def cancel_jobs(job_ids: list[int]) -> int:
+    """Fail jobs that have not started yet. A job already running finishes (it can't be stopped from here)."""
+    if not job_ids:
+        return 0
+    with pool().connection() as conn:
+        return conn.execute("UPDATE jobs SET status = 'failed', error = 'cancelled: video deleted', "
+                            "finished_at = now(), updated_at = now() WHERE id = ANY(%s) AND status = 'queued'",
+                            (job_ids,)).rowcount
+
+
 def merge_stage(vid: str, **kv) -> None:
     with pool().connection() as conn:
         conn.execute("UPDATE studio_videos SET stage = stage || %s, updated_at = now() WHERE id = %s", (Jsonb(kv), vid))

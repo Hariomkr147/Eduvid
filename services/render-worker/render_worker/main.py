@@ -75,7 +75,7 @@ class Worker:
                 storage.put_bytes(log_key, text.encode(), "text/plain")
             except Exception:
                 log_key = None
-            state = jobs.fail(job.id, f"render: {e}", log_key=log_key)
+            state = jobs.fail(job.id, f"render: {e}", log_key=log_key, retry=getattr(e, "retry", True))
             update_render(rid, status="failed" if state == "failed" else "pending")
             log.error("job %s %s: %s", job.id, state, e)
         finally:

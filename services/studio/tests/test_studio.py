@@ -115,7 +115,8 @@ def test_structure_problems_catch_short_scripts():
     s = Script(**FIX)
     ok = {"minutes": 1, "kinds": ["title", "concept", "board", "figure", "example", "check", "summary"], "checks": 1}
     assert structure_problems(s, ok) == []
-    d = json.loads(json.dumps(FIX)); d["scenes"] = d["scenes"][:1]
+    d = json.loads(json.dumps(FIX))
+    d["scenes"] = d["scenes"][:1]
     probs = structure_problems(Script(**d), {**ok, "minutes": 3})
     assert any("far too short" in p for p in probs) and any("check scene" in p for p in probs)
     assert any("switched off" in p for p in structure_problems(s, {**ok, "kinds": ["title", "summary"]}))

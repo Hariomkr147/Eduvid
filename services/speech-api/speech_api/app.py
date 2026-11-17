@@ -54,8 +54,10 @@ def create_app(
                 await c.aclose()
             await app.state.db.close()
 
-    app = FastAPI(title="EduVid Speech API", version="1.0", lifespan=lifespan, docs_url="/docs",
-                  openapi_url="/openapi.json")
+    # Interactive docs only on request (SPEECH_API_DOCS=1): the API is public, its docs page need not be.
+    docs = os.environ.get("SPEECH_API_DOCS", "0") == "1"
+    app = FastAPI(title="EduVid Speech API", version="1.0", lifespan=lifespan, docs_url="/docs" if docs else None,
+                  redoc_url=None, openapi_url="/openapi.json" if docs else None)
     errors.install(app)
     app.include_router(router)
     return app

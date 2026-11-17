@@ -1,6 +1,23 @@
 {$DOMAIN} {
 	encode gzip
 
+	# Security headers on every response. Pages that log in (the builder) may not be framed by other sites; the
+	# public player (/studio/watch, its data and media) may, so lessons can be embedded.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+	@noframe {
+		not path /studio/watch/* /studio/api/watch/* /studio/media/* /studio/static/*
+	}
+	header @noframe {
+		X-Frame-Options "DENY"
+		Content-Security-Policy "frame-ancestors 'none'"
+	}
+
 	# Speech API gateway
 	handle_path /speech/* {
 		# The gateway caps uploads at 100 MB, but only after reading them (before auth). Stop bigger bodies here:

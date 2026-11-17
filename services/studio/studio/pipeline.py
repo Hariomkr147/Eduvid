@@ -61,11 +61,31 @@ class CapReached(RuntimeError):
     pass
 
 
+def _cap(settings: dict) -> float:
+    return float(settings.get("cap_usd") or 0)
+
+
 def _spend(vid: str, usd: float, settings: dict) -> None:
     total = store.add_cost(vid, usd)
-    cap = float(settings.get("cap_usd") or 0)
+    cap = _cap(settings)
     if cap and total >= cap:
         raise CapReached(f"spending cap ${cap:.2f} reached (spent ${total:.2f})")
+
+
+def _ask(vid: str, settings: dict, model: str, messages: list[dict], **kw):
+    """One JSON LLM call under the video's spending cap: refused before the call once the cap is used up, and
+    what it costs is recorded even when it fails (paid empty replies, a reply that was not JSON)."""
+    cap = _cap(settings)
+    if cap and (spent := store.cost(vid)) >= cap:
+        raise CapReached(f"spending cap ${cap:.2f} reached (spent ${spent:.2f})")
+    try:
+        obj, cost = llm.chat_json(model, messages, **kw)
+    except llm.LLMError as e:
+        if e.cost:
+            store.add_cost(vid, e.cost)
+        raise
+    _spend(vid, cost, settings)
+    return obj
 
 
 # ---------- 1. script ----------
@@ -159,16 +179,13 @@ def write_script(vid: str) -> None:
         subject = (units[0].get("subject") if units else tg.get("subject")) or ""
         gl = store.glossary(subject) if subject else []
         msgs = prompts.script_prompt(units, tg.get("text", ""), st, gl)
-        obj, cost = llm.chat_json(model, msgs, temperature=float(st.get("temperature", 0.4)), max_tokens=24000)
-        _spend(vid, cost, st)
+        obj = _ask(vid, st, model, msgs, temperature=float(st.get("temperature", 0.4)), max_tokens=24000)
         script, problems = _validate(obj, st)
         for round_ in range(2):
             if not problems:
                 break
             store.event(vid, "script", "info", f"Fixing {len(problems)} problem(s): {problems[0]}")
-            obj, cost = llm.chat_json(model, prompts.fix_prompt(msgs, obj, problems),
-                                      temperature=0.2, max_tokens=24000)
-            _spend(vid, cost, st)
+            obj = _ask(vid, st, model, prompts.fix_prompt(msgs, obj, problems), temperature=0.2, max_tokens=24000)
             script, problems = _validate(obj, st)
         if script is None:
             raise RuntimeError("the model's script did not match the schema: " + "; ".join(problems[:5]))
@@ -193,8 +210,7 @@ def regenerate_scene(vid: str, index: int, note: str) -> dict:
     st = v["settings"]
     units = ncert.units(v["target"].get("unit_ids") or [])
     msgs = prompts.scene_regen_prompt(v["script"], index, note, units, v["script"]["language"])
-    obj, cost = llm.chat_json(v["model"], msgs, temperature=float(st.get("temperature", 0.4)), max_tokens=8000)
-    _spend(vid, cost, st)
+    obj = _ask(vid, st, v["model"], msgs, temperature=float(st.get("temperature", 0.4)), max_tokens=8000)
     if isinstance(obj, dict) and "scenes" in obj:
         obj = obj["scenes"][0]
     script = dict(v["script"])
@@ -205,6 +221,7 @@ def regenerate_scene(vid: str, index: int, note: str) -> dict:
     if s is None:
         raise ValueError("; ".join(problems[:5]))
     store.update(vid, script=s.model_dump())
+    voice_is_stale(vid)
     store.event(vid, "script", "info", f"Scene {index + 1} rewritten" + (f" ({len(problems)} speakable issue(s))"
                                                                          if problems else ""))
     return s.model_dump()
@@ -245,9 +262,8 @@ def _one_scene(vid: str, model: str, script: dict, i: int, aspect: str, settings
     sc = script["scenes"][i]
     err = ""
     for attempt in range(2):
-        obj, cost = llm.chat_json(model, prompts.custom_prompt(script, sc, aspect, err),
-                                  temperature=float(settings.get("code_temperature", 0.5)), max_tokens=12000)
-        _spend(vid, cost, settings)
+        obj = _ask(vid, settings, model, prompts.custom_prompt(script, sc, aspect, err),
+                   temperature=float(settings.get("code_temperature", 0.5)), max_tokens=12000)
         code = (obj or {}).get("code", "") if isinstance(obj, dict) else ""
         code = prompts.fix_tex_literals(code)
         problems = prompts.code_problems(code) if code else ["no code returned"]
@@ -364,18 +380,22 @@ def start_renders(vid: str) -> None:
     v = store.get(vid)
     st = v["settings"]
     p = prefix(vid)
-    rj = {}
+    rj = dict(v["stage"].get("render_jobs") or {})
     variants = v["variants"]
+    quality = st.get("quality", "draft")
     for var in variants:
+        if var.get("status") not in ("waiting", "failed", None):
+            continue                                   # done / rendered on an earlier attempt: kept
         m = var["mode"]
         key = p + f"{m}/project.tar.gz"
         storage.put_bytes(key, build_project(vid, m), "application/gzip")
         rj[m] = jobs.enqueue("render", {"project_key": key, "data_prefix": p + "voice/", "out_prefix": p + f"{m}/",
-                                        "quality": st.get("quality", "draft"), "fps": 30}, priority=60)
-        var["status"] = "rendering"
+                                        "quality": quality, "fps": 30}, priority=60)
+        var.update(status="rendering", quality=quality, error=None)
     store.update(vid, status="rendering", variants=variants)
     store.merge_stage(vid, render_jobs=rj)
-    store.event(vid, "render", "running", "Rendering " + " + ".join(rj) + " on the GPU")
+    store.event(vid, "render", "running", "Rendering " + " + ".join(x["mode"] for x in variants
+                                                               if x["status"] == "rendering") + " on the GPU")
 
 
 # ---------- 5. publish ----------
@@ -490,7 +510,81 @@ def _job_state(jid) -> tuple[str, dict]:
 
 def _fail(vid: str, step: str, msg: str) -> None:
     store.update(vid, status="failed", error=msg)
+    store.merge_stage(vid, failed_step=step, tick_errors=0, publish_errors=0)
     store.event(vid, step, "failed", msg)
+
+
+TICK_ERRORS_MAX = 10      # consecutive errors (about 30 s at one tick per 3 s) before a video is failed
+PUBLISH_ERRORS_MAX = 5
+
+
+def start_publish(vid: str) -> None:
+    _thread(f"publish:{vid}", _publish_safe, vid)
+
+
+def _publish_safe(vid: str) -> None:
+    """Publish off the loop thread (it downloads each video for its poster). A failure is retried on the next ticks
+    (storage may be restarting); only repeated failures fail the video."""
+    try:
+        publish(vid)
+    except Exception as e:
+        log.exception("publish %s", vid)
+        n = int(((store.get(vid) or {}).get("stage") or {}).get("publish_errors", 0)) + 1
+        if n >= PUBLISH_ERRORS_MAX:
+            _fail(vid, "publish", f"{type(e).__name__}: {e}")
+        else:
+            store.merge_stage(vid, publish_errors=n)
+
+
+def voice_is_stale(vid: str) -> None:
+    """The script changed: recorded narration and timings no longer match it, so Retry must not reuse them."""
+    store.merge_stage(vid, voice_job=None, words_job=None, render_jobs={})
+
+
+def resume(vid: str) -> str:
+    """Retry a failed video from where it stopped, reusing finished narration, timing and renders.
+    Returns the step it resumes at: "review" (nothing reusable), "words", "render" or "publish"."""
+    v = store.get(vid)
+    sg, st = v["stage"], v["settings"]
+    voice_ok = _job_state(sg.get("voice_job"))[0] == "done"
+    words_ok = voice_ok and _job_state(sg.get("words_job"))[0] == "done"
+    store.merge_stage(vid, tick_errors=0, publish_errors=0, failed_step=None)
+    if not voice_ok:
+        store.update(vid, status="review", error=None)
+        store.event(vid, "script", "info", "Back to review: press Build to try again")
+        return "review"
+    if not words_ok:
+        store.update(vid, status="voicing", error=None)          # tick sees the finished voice job, starts words
+        store.event(vid, "words", "info", "Retrying from word timing (narration reused)")
+        return "words"
+    modes = variants_for(st.get("mode", "template"))
+    quality = st.get("quality", "draft")
+    old = {x["mode"]: x for x in v["variants"]}
+    variants = []
+    for m in modes:
+        x = old.get(m)
+        keep = x and x.get("status") in ("done", "rendered") and x.get("quality", "draft") == quality
+        variants.append(x if keep else {"mode": m, "status": "waiting"})
+    code_done = bool(sg.get("code_done")) or "llm" not in modes or any(
+        x["mode"] == "llm" and x["status"] in ("done", "rendered") for x in variants)
+    store.merge_stage(vid, code_done=code_done)
+    if all(x["status"] in ("done", "rendered") for x in variants):
+        store.update(vid, variants=variants, status="publishing", error=None)
+        store.event(vid, "publish", "info", "Retrying publishing (renders reused)")
+        return "publish"
+    store.update(vid, variants=variants, status="coding", error=None)  # tick: code if needed, then renders
+    store.event(vid, "render", "info", "Retrying from rendering (narration and timing reused)")
+    return "render"
+
+
+def purge(vid: str) -> int:
+    """Everything a deleted video leaves behind: its queued jobs and its files in storage."""
+    v = store.get(vid)
+    if v:
+        sg = v.get("stage") or {}
+        ids = [sg.get("voice_job"), sg.get("words_job"), *(sg.get("render_jobs") or {}).values()]
+        store.cancel_jobs([int(i) for i in ids if i])
+    return storage.delete_prefix(prefix(vid))
 
 
 def tick() -> None:
@@ -554,15 +648,26 @@ def tick() -> None:
                         changed = True
                 if changed:
                     store.update(vid, variants=variants)
-                if all(x["status"] in ("rendered", "failed") for x in variants):
-                    store.event(vid, "render", "done" if any(x["status"] == "rendered" for x in variants)
+                if all(x["status"] in ("rendered", "done", "failed") for x in variants):
+                    store.event(vid, "render", "done" if any(x["status"] in ("rendered", "done") for x in variants)
                                 else "failed", "")
-                    publish(vid)
+                    store.update(vid, status="publishing")
+                    start_publish(vid)
             elif v["status"] == "publishing":
-                publish(vid)
+                start_publish(vid)                                      # after a restart, or a failed attempt
+            if sg.get("tick_errors"):
+                store.merge_stage(vid, tick_errors=0)
         except Exception as e:
-            log.exception("tick %s", vid)
-            _fail(vid, "pipeline", f"{type(e).__name__}: {e}\n{traceback.format_exc()[-1500:]}")
+            # Storage or the database may be restarting: retry on the next ticks, fail only if it persists.
+            n = int(sg.get("tick_errors") or 0) + 1
+            log.warning("tick %s: error %d/%d: %s", vid, n, TICK_ERRORS_MAX, e)
+            try:
+                if n >= TICK_ERRORS_MAX:
+                    _fail(vid, "pipeline", f"{type(e).__name__}: {e}\n{traceback.format_exc()[-1500:]}")
+                else:
+                    store.merge_stage(vid, tick_errors=n)
+            except Exception:
+                log.exception("tick %s: could not record the error", vid)
 
 
 def recover() -> None:

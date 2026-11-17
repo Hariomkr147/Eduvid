@@ -138,6 +138,54 @@ def test_check_failure_fails_job(store, tmp_path, monkeypatch):
     assert jid == 42 and "check" in error and log_key == "o/log.txt"
     assert b"Wd('slant')" in store["o/log.txt"]
     assert len(tools.steps) == 1                                   # nothing rendered after a failed check
+    assert retry is False                                          # a broken project fails the same way again
+
+
+def _fail_calls(monkeypatch):
+    calls = []
+    monkeypatch.setattr(main.jobs, "claim", lambda *a, **k: job())
+    monkeypatch.setattr(main.jobs, "fail", lambda jid, error, log_key=None, retry=True:
+                        calls.append((error, retry)) or "requeued")
+    monkeypatch.setattr(main.jobs, "complete", lambda *a, **k: None)
+    monkeypatch.setattr(main.jobs, "heartbeat", lambda *a, **k: None)
+    monkeypatch.setattr(main, "update_render", lambda *a, **k: None)
+    return calls
+
+
+def test_missing_input_fails_without_retry(store, tmp_path, monkeypatch):
+    from botocore.exceptions import ClientError
+    calls = _fail_calls(monkeypatch)
+
+    def missing(key, dest):
+        raise ClientError({"Error": {"Code": "NoSuchKey", "Message": "gone"}}, "GetObject")
+    monkeypatch.setattr(store, "get_file", missing, raising=False)
+    main.Worker("rw1", 1, tmp_path, "", "NVIDIA L4", runner=FakeTools()).run_once()
+    (error, retry), = calls
+    assert "missing" in error and retry is False
+
+
+def test_a_failed_video_step_is_retried(store, tmp_path, monkeypatch):
+    calls = _fail_calls(monkeypatch)
+    tools = FakeTools()
+    real = tools.__call__
+
+    def flaky(cmd, cwd, env, timeout):
+        return (1, "GPU lost") if cmd[2:3] == ["video"] else real(cmd, cwd, env, timeout)
+    main.Worker("rw1", 1, tmp_path, "", "NVIDIA L4", runner=flaky).run_once()
+    (error, retry), = calls
+    assert "video failed" in error and retry is True
+
+
+def test_a_check_that_timed_out_is_retried(store, tmp_path, monkeypatch):
+    calls = _fail_calls(monkeypatch)
+    tools = FakeTools()
+    real = tools.__call__
+
+    def slow(cmd, cwd, env, timeout):
+        return (124, "TIMEOUT after 600 s") if cmd[2:3] == ["check"] else real(cmd, cwd, env, timeout)
+    main.Worker("rw1", 1, tmp_path, "", "NVIDIA L4", runner=slow).run_once()
+    (_, retry), = calls
+    assert retry is True
 
 
 def test_scratch_cleaned_on_success_and_failure_and_startup(store, tmp_path, monkeypatch):

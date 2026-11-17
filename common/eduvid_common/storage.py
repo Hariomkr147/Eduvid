@@ -61,6 +61,19 @@ def delete(key: str) -> None:
     client().delete_object(Bucket=_bucket(), Key=key)
 
 
+def delete_prefix(prefix: str) -> int:
+    """Delete every object under `prefix` (must end in '/'). Returns how many were deleted."""
+    if not prefix or not prefix.endswith("/"):
+        raise ValueError(f"refusing to delete a prefix that does not end in '/': {prefix!r}")
+    n = 0
+    for page in client().get_paginator("list_objects_v2").paginate(Bucket=_bucket(), Prefix=prefix):
+        keys = [{"Key": o["Key"]} for o in page.get("Contents", [])]
+        if keys:
+            client().delete_objects(Bucket=_bucket(), Delete={"Objects": keys, "Quiet": True})
+            n += len(keys)
+    return n
+
+
 def presigned_url(key: str, expires_s: int = 3600) -> str:
     return client().generate_presigned_url(
         "get_object", Params={"Bucket": _bucket(), "Key": key}, ExpiresIn=expires_s

@@ -33,7 +33,7 @@ bash infra/check_host.sh       # prints HOST OK
 |---|---|---|
 | 1, 2 | render-worker-1, render-worker-2 (Chrome WebGL + NVENC, 3 renderers each) | per render |
 | 0 | tts-omnivoice + tts-kokoro (onnxruntime CUDA) + asr-whisperx (large-v3 fp16, hi/en aligners) | 8089 MiB of 23034 (limit 21 GB) |
-| 3 | QA (Plan 4). For now: benchmark candidates (`--profile bench`, stop with `docker compose --profile bench stop`) tts-chatterbox + tts-veena (bf16) + tts-parler + tts-indicf5 | 17012 MiB |
+| 3 | tts-indicf5 (production: the studio's default voice) + benchmark candidates (`--profile bench`, stop with `docker compose --profile bench stop tts-chatterbox tts-veena tts-parler`) tts-chatterbox + tts-veena (bf16) + tts-parler | 17012 MiB |
 
 ## ASR note
 
@@ -106,15 +106,29 @@ Needs `NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics,video` and the NVIDIA
 the image. The worker probes at start and logs `ready: webgl …`; if no flag set reaches the GPU it logs
 `WARNING software GL` and renders at lower 3D resolution. NVENC (`h264_nvenc`) works with the apt ffmpeg 4.4.
 
+The worker runs as user `render` (uid 1001, gid 1004: the host owner of `/srv/eduvid/data`) so Chrome keeps its
+sandbox, because scenes run LLM-written code. Docker's default seccomp profile blocks the namespaces that sandbox needs;
+compose gives the render workers `infra/seccomp/chrome.json` (Docker's default profile plus `clone`/`unshare`/`setns`).
+Render workers get only the database and object-store credentials (`infra/check_secrets.sh` enforces this).
+
 Measured on `area-volume` (45.9 s, 1080×1920): **draft 50 s** (JPEG frames, NVENC, 3 browsers), **final 266 s**
 (PNG frames, x264 slow CRF 14).
 
 ## Operations
 
-- **Disk alarm:** `infra/disk_alarm.sh` from hariom's crontab every 15 min; over 80 % it logs
-  `WARN disk > 80%` to syslog (`journalctl -t eduvid`) and `/srv/eduvid/data/alerts.log`.
-- **Backups:** nightly local `pg_dump` + restore test (`eduvid-backup.timer`, 02:30 IST). The off-site GCS copy is
-  **off for now** (`BACKUP_SKIP_GCS=1` in the unit) until the bucket exists; spec §10 wants it nightly.
+- **Alerts:** `infra/alert.sh` writes to syslog (`journalctl -t eduvid`), `/srv/eduvid/data/alerts.log` and, if set,
+  `ALERT_WEBHOOK_URL` in `.env` (an ntfy topic URL, or a Slack / Google Chat / Discord incoming webhook).
+- **Monitor:** `infra/monitor.sh` from hariom's crontab every 5 min: alerts once per new problem: a container that
+  restarted, is unhealthy or is down; failed jobs and studio videos; a failed or missing (older than 36 h) backup.
+- **Disk alarm:** `infra/disk_alarm.sh` from hariom's crontab every 15 min; over 80 % it alerts (at most every 6 h).
+- **Backups:** nightly `pg_dump` (keep 14) + restore test, and a tar of the MinIO data (keep 7) in
+  `/srv/eduvid/data/backups` (`eduvid-backup.timer`, 02:30 IST). Those copies are on the same disk. The off-site GCS
+  copy is **off for now** (`BACKUP_SKIP_GCS=1` in the unit) until the bucket exists; spec §10 wants it nightly.
+- **Deploy:** this directory is a checkout of `github.com/Hariomkr147/Eduvid` (`main`): commit, push, then `make up`.
+- **CI:** `.github/workflows/ci.yml` runs ruff, the compose secrets check and every service's unit tests on each push.
+- **Studio:** a failed video's Retry resumes from the failed step (finished narration, timing and renders are reused
+  unless the script or voice changed). Deleting a video cancels its queued jobs and deletes its files. Logins are
+  limited to 10 wrong passwords per IP (60 in total) per 15 min. Speech API docs are off unless `SPEECH_API_DOCS=1`.
 - **Budget alert:** set in GCP Billing → Budgets (owner action).
 
 ## Not in this repository

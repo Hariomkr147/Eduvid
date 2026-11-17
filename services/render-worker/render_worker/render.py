@@ -15,6 +15,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from botocore.exceptions import ClientError
+
 from eduvid_common import storage as _storage
 from eduvid_common.jobs import Job
 
@@ -37,11 +39,13 @@ Runner = Callable[[list[str], Path, dict, float], tuple[int, str]]
 
 
 class RenderError(RuntimeError):
-    """A step failed. `log` holds everything the steps printed."""
+    """A step failed. `log` holds everything the steps printed. `retry` is False when running the same job again
+    would fail the same way (the project is broken, its input is missing), so the job fails at once."""
 
-    def __init__(self, msg: str, log: str):
+    def __init__(self, msg: str, log: str, retry: bool = True):
         super().__init__(msg)
         self.log = log
+        self.retry = retry
 
 
 def run_cmd(cmd: list[str], cwd: Path, env: dict, timeout: float) -> tuple[int, str]:
@@ -83,7 +87,8 @@ def _extract(tar_path: Path, dest: Path) -> None:
         for m in t.getmembers():
             target = (dest / m.name).resolve()
             if not (target == dest or dest in target.parents) or m.issym() or m.islnk() or m.isdev():
-                raise RenderError(f"unsafe path in project tar: {m.name}", f"rejected tar member {m.name!r}")
+                raise RenderError(f"unsafe path in project tar: {m.name}", f"rejected tar member {m.name!r}",
+                                  retry=False)
         t.extractall(dest)
 
 
@@ -97,10 +102,15 @@ def run(job: Job, scratch: Path, flags: str, runner: Runner = run_cmd, renderer:
     proj.mkdir(parents=True, exist_ok=True)
     t0 = time.monotonic()
 
-    tar = storage.get_file(p["project_key"], work / "project.tar.gz")
-    _extract(tar, proj)
-    for f in DATA_FILES:
-        storage.get_file(data_prefix + f, proj / "data" / f)
+    try:
+        tar = storage.get_file(p["project_key"], work / "project.tar.gz")
+        _extract(tar, proj)
+        for f in DATA_FILES:
+            storage.get_file(data_prefix + f, proj / "data" / f)
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+            raise RenderError(f"input missing in storage: {e}", f"missing input: {e}", retry=False) from e
+        raise
 
     env = {**os.environ, "CHROME_FLAGS": flags, "JOBS": str(JOBS)}
     if not flags:
@@ -123,8 +133,8 @@ def run(job: Job, scratch: Path, flags: str, runner: Runner = run_cmd, renderer:
         log.append(f"$ {' '.join(cmd)}  ({time.monotonic() - ts:.1f} s, exit {code})\n{out.rstrip()}")
         if name == "check":
             check_out = out
-            if code != 0 or "CHECK OK" not in out:
-                raise RenderError("check failed (no CHECK OK)", "\n".join(log))
+            if code != 0 or "CHECK OK" not in out:                  # the project itself is wrong: same every time
+                raise RenderError("check failed (no CHECK OK)", "\n".join(log), retry=code == 124)
         elif code != 0:
             raise RenderError(f"{name} failed (exit {code})", "\n".join(log))
 

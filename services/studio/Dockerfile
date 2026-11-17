@@ -12,4 +12,4 @@ COPY engine/styles/nce-lesson /srv/studio/engine/styles/nce-lesson
 COPY engine/shared/tools /srv/studio/engine/shared/tools
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
-CMD ["uvicorn", "studio.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers"]
+CMD ["uvicorn", "studio.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]

@@ -28,4 +28,9 @@ COPY engine/videos/area-volume /srv/engine-probe
 COPY engine/shared/tools/ /srv/engine-probe/tools/
 WORKDIR /srv/render-worker
 COPY services/render-worker/ .
+# Run as a normal user (uid/gid of the host owner of /srv/eduvid/data) so Chrome keeps its sandbox: capture.mjs adds
+# --no-sandbox only for root, and scenes run LLM-written code. The namespace sandbox needs compose's seccomp profile
+# infra/seccomp/chrome.json (Docker's default blocks unshare/clone of namespaces).
+RUN groupadd -g 1004 render && useradd -u 1001 -g 1004 -m -s /usr/sbin/nologin render
+USER render
 CMD ["python", "-m", "render_worker.main"]
